@@ -1,70 +1,8 @@
+import glob
 import os
 from datetime import datetime
 import re
-
-
-def classify_attention_level(value):
-    """根据数值返回注意力等级"""
-    value = int(value)
-
-    if value == 0:
-        return "无效"
-    elif 1 <= value <= 20:
-        return "低"
-    elif 20 < value <= 40:
-        return "稍低"
-    elif 40 < value <= 60:
-        return "中性"
-    elif 60 < value <= 80:
-        return "稍高"
-    elif 80 < value <= 100:
-        return "高"
-    else:
-        return "异常值"  # 处理超出范围的情况
-
-
-def process_file(input_file, output_file):
-    """处理文件，提取时间和注意力等级"""
-    with open(input_file, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-
-    results = []
-
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        # 分割数据
-        parts = line.split(',')
-
-        # 提取时间（第一部分）
-        timestamp = parts[0]
-
-        # 提取倒数第二列（假设列数固定）
-        attention_value = parts[-2] if len(parts) >= 2 else "0"
-
-        # 分类
-        level = classify_attention_level(attention_value)
-
-        # 组合结果
-        results.append(f"{timestamp},{level}")
-
-    # 写入新文件
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write("时间,注意力等级\n")
-        f.write("\n".join(results))
-
-    print(f"处理完成！共处理 {len(results)} 行数据")
-    print(f"输出文件: {output_file}")
-    # 统计各等级数量
-    from collections import Counter
-    levels = [line.split(',')[1] for line in results]
-    counter = Counter(levels)
-
-    print("\n等级分布统计:")
-    for level, count in counter.items():
-        print(f"  {level}: {count} 行 ({count / len(results) * 100:.1f}%)")
+import pandas as pd
 
 
 def filter_time_range(input_file_path, output_dir_path, start_time_str, end_time_str):
@@ -223,12 +161,21 @@ def batch_filter_eegs_by_videos(video_dir_path, eeg_file_path, output_eeg_dir_pa
         time_range_str = f"{start_dt.strftime('%Y%m%d%H%M%S')}_{end_dt.strftime('%Y%m%d%H%M%S')}"
 
         # 拼接完整输出路径: 原路径/原文件名_开始时间-结束时间.txt
-        output_file_path = os.path.join(output_eeg_dir_path, f"{filename_no_ext}_{time_range_str}.txt")
+        output_file_path = os.path.join(output_eeg_dir_path, f"{filename_no_ext}_{time_range_str}.csv")
 
         # 4. 筛选数据并写入
         matched_count = 0
         try:
             with open(output_file_path, 'w', encoding='utf-8') as out_f:
+                if log_entries:  # 确保有数据
+                    # 获取原始文件的表头信息，通常原始文件的第一行可能是表头
+                    # 从原始文件中读取表头
+                    with open(eeg_file_path, 'r', encoding='utf-8') as original_file:
+                        first_line = original_file.readline().strip()
+                        if first_line:
+                            # 假设第一行是表头或数据格式说明
+                            # 如果第一行是数据而不是表头，可以根据实际数据格式调整
+                            out_f.write(first_line + '\n')  # 写入表头或格式说明
                 for dt, line_content in log_entries:
                     # 判断日志时间是否在视频的时间范围内
                     if start_dt <= dt <= end_dt:
@@ -247,8 +194,139 @@ def batch_filter_eegs_by_videos(video_dir_path, eeg_file_path, output_eeg_dir_pa
 
     print(f"\n全部完成！共处理了 {video_count} 个视频对应的日志数据。")
 
+
+def txt_to_csv(input_dir=".", output_dir="csv_output",
+               delimiter=None, encoding="utf-8",
+               skip_errors=True):
+    """
+    将目录下的所有TXT文件转换为CSV格式
+
+    参数:
+    ----------
+    input_dir : str
+        输入目录路径，默认为当前目录
+    output_dir : str
+        输出目录路径，默认为"csv_output"
+    delimiter : str or None
+        分隔符，如果为None则自动检测（尝试逗号、制表符、空格）
+    encoding : str
+        文件编码，默认为"utf-8"
+    skip_errors : bool
+        遇到错误时是否跳过文件，默认为True
+
+    返回:
+    ----------
+    list: 成功转换的文件列表
+    """
+
+    # 创建输出目录
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 获取所有TXT文件
+    txt_pattern = os.path.join(input_dir, "*.txt")
+    txt_files = glob.glob(txt_pattern)
+
+    if not txt_files:
+        print(f"在目录 '{input_dir}' 中没有找到TXT文件")
+        return []
+
+    print(f"找到 {len(txt_files)} 个TXT文件:")
+    for file in txt_files:
+        print(f"  {os.path.basename(file)}")
+
+    converted_files = []
+    failed_files = []
+
+    # 自动检测常见分隔符
+    possible_delimiters = [',', '\t', ';', ' ', '|']
+
+    for txt_file in txt_files:
+        filename = os.path.basename(txt_file)
+        csv_filename = os.path.splitext(filename)[0] + ".csv"
+        csv_path = os.path.join(output_dir, csv_filename)
+
+        print(f"\n处理文件: {filename}")
+
+        try:
+            # 读取文件前几行来检测分隔符
+            if delimiter is None:
+                detected_delimiter = None
+                with open(txt_file, 'r', encoding=encoding) as f:
+                    first_line = f.readline().strip()
+                    second_line = f.readline().strip() if first_line else ""
+
+                    # 测试每个可能的分隔符
+                    for delim in possible_delimiters:
+                        if delim in first_line:
+                            # 检查分隔符是否一致
+                            if second_line and delim in second_line:
+                                # 检查分割后的列数是否一致
+                                parts1 = first_line.split(delim)
+                                parts2 = second_line.split(delim)
+                                if len(parts1) > 1 and len(parts1) == len(parts2):
+                                    detected_delimiter = delim
+                                    break
+
+                if detected_delimiter is None:
+                    # 如果没有检测到明确的分隔符，尝试空格（可能是固定宽度）
+                    print(f"  警告: 无法自动检测分隔符，尝试按空格分割")
+                    detected_delimiter = None  # 让pandas按空格分割
+
+                used_delimiter = detected_delimiter
+            else:
+                used_delimiter = delimiter
+
+            # 读取TXT文件
+            if used_delimiter is None:
+                # 使用pandas读取，它会尝试自动检测分隔符
+                df = pd.read_csv(txt_file, delimiter=None, engine='python',
+                                 encoding=encoding, on_bad_lines='warn',header=0)
+            else:
+                # 使用指定的分隔符
+                df = pd.read_csv(txt_file, delimiter=used_delimiter,
+                                 encoding=encoding, on_bad_lines='warn',header=0)
+
+            # 保存为CSV
+            df.to_csv(csv_path, index=False, encoding='utf-8-sig',header=True)  # utf-8-sig防止Excel乱码
+
+            # 统计信息
+            print(f"  成功转换: {csv_filename}")
+            print(f"  原始行数: {len(df)} 行")
+            print(f"  列数: {len(df.columns)} 列")
+            print(f"  列名: {list(df.columns)}")
+            if used_delimiter:
+                print(f"  使用的分隔符: {repr(used_delimiter)}")
+
+            converted_files.append((filename, csv_filename, len(df), len(df.columns)))
+
+        except Exception as e:
+            error_msg = f"转换失败: {e}"
+            print(f"  {error_msg}")
+            if skip_errors:
+                failed_files.append((filename, str(e)))
+            else:
+                raise
+
+    # 输出总结报告
+    print(f"\n{'=' * 60}")
+    print("转换完成!")
+    print(f"成功转换: {len(converted_files)} 个文件")
+
+    if converted_files:
+        print("\n成功转换的文件:")
+        for original, converted, rows, cols in converted_files:
+            print(f"  {original} → {converted} ({rows}行 × {cols}列)")
+
+    if failed_files:
+        print(f"\n失败的文件 ({len(failed_files)} 个):")
+        for filename, error in failed_files:
+            print(f"  {filename}: {error}")
+
+    print(f"\n所有CSV文件已保存到: {os.path.abspath(output_dir)}")
+
+    return converted_files
 # 使用示例
 if __name__ == "__main__":
-    # process_file(r"E:\数据\脑电_重新解码\group1\2019214823_颜喜乐.txt", r"D:\GraduationProject\demo1\output\output_levels.csv")
-    # filter_time_range(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\脑电\2021214387_周婉婷.txt", r"D:\GraduationProject\demo1\output", "20231229150516", "20231229151709")
-    batch_filter_eegs_by_videos(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\新建文件夹", r"D:\GraduationProject\demo1\output\2021214387_周婉婷.txt", r"D:\GraduationProject\demo1\output\eegs")
+     # filter_time_range(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\脑电\2021214387_周婉婷.txt", r"D:\GraduationProject\demo1\output", "20231229150516", "20231229151709")
+    batch_filter_eegs_by_videos(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total", r"D:\GraduationProject\demo1\output\2021214387_周婉婷.txt", r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs")
+    # txt_to_csv(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs", r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs_csv")

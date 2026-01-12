@@ -294,4 +294,4 @@ if __name__ == '__main__':
     #     parse_packet(data)
     # parse_packet(RAW_DATA_EXAMPLE[0])
 
-    process_eeg_file(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\脑电\2021214387_周婉婷.txt", r"D:\GraduationProject\demo1\output\2021214387_周婉婷.txt")
+    process_eeg_file(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\脑电\2021214387_周婉婷.txt", r"D:\GraduationProject\demo1\output\2021214387_周婉婷1.txt")
