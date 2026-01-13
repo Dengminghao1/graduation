@@ -1,9 +1,10 @@
+import threading
 from datetime import datetime, timedelta  # 或者使用下面专门计时的 time 模块
 import glob
 import os
 import re
 import time  # 导入用于计时的标准 time 模块
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
 import numpy as np
 # 按 Shift+F10 执行或将其替换为您的代码。
@@ -13,7 +14,7 @@ from pathlib import Path
 from ultralytics import YOLO
 import conf
 from moviepy.editor import VideoFileClip
-
+import multiprocessing
 
 def find_main_person(
         image_path,
@@ -1343,20 +1344,78 @@ def batch_process_videos(input_dir, output_dir=None, **blur_params):
 
     # 更新默认参数
     default_params.update(blur_params)
-
+    # 初始化计数器
+    completed_count = 0
+    # 多线程处理
+    max_workers = min(len(video_files), multiprocessing.cpu_count())
     # 处理结果列表
     results = []
 
     # 批量处理
-    total_start_time = time.time()
+
     total_files = len(video_files)
 
-    for i, video_path in enumerate(video_files, 1):
-        try:
-            print(f"\n{'=' * 60}")
-            print(f"正在处理文件 {i}/{total_files}: {os.path.basename(video_path)}")
-            print(f"{'=' * 60}")
 
+    # for i, video_path in enumerate(video_files, 1):
+    #     try:
+    #         print(f"\n{'=' * 60}")
+    #         print(f"正在处理文件 {i}/{total_files}: {os.path.basename(video_path)}")
+    #         print(f"{'=' * 60}")
+    #
+    #         # 生成输出文件路径
+    #         video_name = Path(video_path).stem
+    #         output_filename = f"{video_name}_blurred.mp4"
+    #         output_path = os.path.join(output_dir, output_filename)
+    #
+    #         # 如果文件已存在，添加时间戳
+    #         if os.path.exists(output_path):
+    #             timestamp = time.strftime("%Y%m%d_%H%M%S")
+    #             output_filename = f"{video_name}_blurred_{timestamp}.mp4"
+    #             output_path = os.path.join(output_dir, output_filename)
+    #
+    #         # 记录开始时间
+    #         file_start_time = time.time()
+    #
+    #         # 处理单个视频
+    #         result = process_video_with_blur(
+    #             video_path=video_path,
+    #             output_path=output_path,
+    #             **default_params
+    #         )
+    #
+    #         # 计算处理时间
+    #         file_time = time.time() - file_start_time
+    #
+    #         # 保存处理结果
+    #         result_info = {
+    #             'input_file': video_path,
+    #             'output_file': output_path,
+    #             'success': True,
+    #             'processing_time': file_time,
+    #             'details': result
+    #         }
+    #         results.append(result_info)
+    #
+    #         print(f"✓ 处理完成: {os.path.basename(output_path)}")
+    #         print(f"  处理时间: {file_time:.2f}秒")
+    #
+    #
+    #
+    #     except Exception as e:
+    #         print(f"✗ 处理失败: {str(e)}")
+    #         error_info = {
+    #             'input_file': video_path,
+    #             'error': str(e),
+    #             'success': False
+    #         }
+    #         results.append(error_info)
+    # 使用线程锁保护共享资源
+    lock = threading.Lock()
+
+    def process_single_video(video_path):
+        """处理单个视频的函数"""
+        nonlocal completed_count
+        try:
             # 生成输出文件路径
             video_name = Path(video_path).stem
             output_filename = f"{video_name}_blurred.mp4"
@@ -1371,7 +1430,7 @@ def batch_process_videos(input_dir, output_dir=None, **blur_params):
             # 记录开始时间
             file_start_time = time.time()
 
-            # 处理单个视频
+            # 调用单个视频处理函数
             result = process_video_with_blur(
                 video_path=video_path,
                 output_path=output_path,
@@ -1389,28 +1448,46 @@ def batch_process_videos(input_dir, output_dir=None, **blur_params):
                 'processing_time': file_time,
                 'details': result
             }
-            results.append(result_info)
 
-            print(f"✓ 处理完成: {os.path.basename(output_path)}")
-            print(f"  处理时间: {file_time:.2f}秒")
+            # 打印完成信息（线程安全）
+            with lock:
 
-            # 显示详细信息（如果有）
-            if isinstance(result, dict) and 'frame_count' in result:
-                print(f"  帧数: {result.get('frame_count', 'N/A')}")
-                print(f"  输出FPS: {result.get('output_fps', 'N/A')}")
-                print(f"  检测到人物数: {result.get('persons_detected', 'N/A')}")
+                completed_count += 1
+                print(f"[{completed_count}/{total_files}] ✓ 处理完成: {os.path.basename(output_path)} "
+                      f"(耗时: {file_time:.2f}秒)")
+
+            return result_info
 
         except Exception as e:
-            print(f"✗ 处理失败: {str(e)}")
+            # 处理错误（线程安全）
+            with lock:
+
+                completed_count += 1
+                print(f"[{completed_count}/{total_files}] ✗ 处理失败: {str(e)}")
+
             error_info = {
                 'input_file': video_path,
                 'error': str(e),
                 'success': False
             }
-            results.append(error_info)
+            return error_info
+
+        # 使用线程池并行处理
+
+    start_time = time.time()
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        # 提交所有任务
+        future_to_video = {executor.submit(process_single_video, video): video
+                           for video in video_files}
+
+        # 收集结果
+        for future in as_completed(future_to_video):
+            result = future.result()
+            results.append(result)
 
     # 汇总统计
-    total_time = time.time() - total_start_time
+    total_time = time.time() - start_time
 
     successful = sum(1 for r in results if r.get('success', False))
     failed = total_files - successful
@@ -1665,7 +1742,7 @@ if __name__ == '__main__':
         'edge_blur_radius': 7,
         'use_person_class_only': True
     }
-    batch_process_videos(input_dir=r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214379_陈程\新建文件夹",
+    batch_process_videos(input_dir=r"E:\数据\20231229 计算机网络考试数据汇总\第2组\视频\2021214372_姬高阳",
                          **blur_params)
 
     # cut_video_from_time_to_end(

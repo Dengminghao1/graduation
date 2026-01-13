@@ -5,9 +5,10 @@ import seaborn as sns
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report,  confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
 from sklearn.tree import DecisionTreeClassifier
 
 # 读取数据
@@ -15,9 +16,14 @@ df = pd.read_csv(r"D:\GraduationProject\demo1\output\align_face_eeg_second.csv")
 
 # 去除列名中的空格，并选择从 gaze_0_x 到 p_33 之间的列
 df.columns = df.columns.str.strip()  # 去除列名首尾空格
-
-start_column = 'X_0'
-end_column = 'Z_67'
+# gaze_0_x  gaze_1_z gaze_angle_x gaze_angle_y
+# eye_lmk_x_0 eye_lmk_y_55
+# eye_lmk_X_0 eye_lmk_Z_55
+# pose_Tx pose_Rz
+# x_0 y_67 X_0 Z_67
+# p_scale p_rx p_ty p_0 p_33
+start_column = 'gaze_0_x'
+end_column = 'p_33'
 
 if start_column in df.columns and end_column in df.columns:
     all_cols = df.columns.tolist()
@@ -75,9 +81,9 @@ X_test_scaled = scaler.transform(X_test)
 # 分类模型
 class_models = {
     '逻辑回归': LogisticRegression(max_iter=10000, random_state=42),
+    '贝叶斯': GaussianNB() ,
     '决策树': DecisionTreeClassifier(random_state=42),
     '随机森林': RandomForestClassifier(n_estimators=100, random_state=42),
-    '梯度提升': GradientBoostingClassifier(n_estimators=100, random_state=42),
     'SVM': SVC(kernel='rbf', probability=True, random_state=42)
 }
 
@@ -103,6 +109,12 @@ for name, model in class_models.items():
     precision = precision_score(y_test, y_pred, average='weighted')
     recall = recall_score(y_test, y_pred, average='weighted')
     f1 = f1_score(y_test, y_pred, average='weighted')
+    # y_pred = model.predict(X_train_scaled)  # 改为使用训练集
+    #
+    # accuracy = accuracy_score(y_train, y_pred)  # 改为使用训练集真实标签
+    # precision = precision_score(y_train, y_pred, average='weighted')
+    # recall = recall_score(y_train, y_pred, average='weighted')
+    # f1 = f1_score(y_train, y_pred, average='weighted')
 
     class_results[name] = {
         'model': model,
@@ -122,5 +134,6 @@ for name, model in class_models.items():
     # 显示分类报告
     print("分类报告:")
     print(classification_report(y_test, y_pred))
+    # print(classification_report(y_train, y_pred))
 
 
