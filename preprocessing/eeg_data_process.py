@@ -328,5 +328,5 @@ def txt_to_csv(input_dir=".", output_dir="csv_output",
 # 使用示例
 if __name__ == "__main__":
      # filter_time_range(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\脑电\2021214387_周婉婷.txt", r"D:\GraduationProject\demo1\output", "20231229150516", "20231229151709")
-    batch_filter_eegs_by_videos(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total", r"D:\GraduationProject\demo1\output\2021214387_周婉婷.txt", r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs")
+    batch_filter_eegs_by_videos(r"E:\数据\20231229 计算机网络考试数据汇总\第6组\视频\2021214398_张颖", r"E:\数据\20231229 计算机网络考试数据汇总\第6组\视频\2021214398_张颖\total\2021214398_张颖.txt", r"E:\数据\20231229 计算机网络考试数据汇总\第6组\视频\2021214398_张颖\total\eeg_csv")
     # txt_to_csv(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs", r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs_csv")

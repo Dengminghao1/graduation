@@ -14,7 +14,7 @@ def simple_merge_and_clean(directory, output_name="merged_clean.csv"):
     dfs = []
     for file in files:
         df = pd.read_csv(os.path.join(directory, file))
-        # df['source_file'] = file  # 标记来源文件
+        df['source_file'] = file  # 标记来源文件
         dfs.append(df)
 
     # 合并

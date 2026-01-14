@@ -106,5 +106,13 @@ def process_video_example():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
     # process_video_example()
+
+    # 检查 TensorFlow 模块的属性
+    import tensorflow as tf
+
+    print(dir(tf))
+    # 查看是否有 version 属性
+    print(hasattr(tf, '__version__'))
+    print(hasattr(tf, 'version'))
