@@ -52,6 +52,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="E:\数据\20231229 计算机网络考试数据汇总\第6组\视频\2021214398_张颖\total\eeg_csv\2021214398_张颖_20231229125924_20231229130959.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="E:\数据\20231229 计算机网络考试数据汇总\第6组\视频\2021214398_张颖\total\eeg_csv\2021214398_张颖_20231229160026_20231229160416.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\output\align_face_eeg_second.csv">
           <value>
             <Attribute>
@@ -73,6 +87,48 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\runs\detect\train10\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\runs\detect\train11\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\runs\detect\train12\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\runs\detect\train13\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\runs\detect\train14\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\runs\detect\train15\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\runs\detect\train2\results.csv">
           <value>
             <Attribute>
@@ -81,6 +137,41 @@
           </value>
         </entry>
         <entry key="\runs\detect\train3\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\runs\detect\train5\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\runs\detect\train6\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\runs\detect\train7\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\runs\detect\train8\results.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\runs\detect\train9\results.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

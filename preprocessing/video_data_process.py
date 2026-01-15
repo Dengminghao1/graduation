@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 # 按 Shift+F10 执行或将其替换为您的代码。
 # 按 双击 Shift 在所有地方搜索类、文件、工具窗口、操作和设置。
-import torch
 from pathlib import Path
 from ultralytics import YOLO
 import conf
@@ -1505,7 +1504,7 @@ def batch_process_videos(input_dir, output_dir=None, **blur_params):
     return results
 
 
-def cut_video_from_time_to_end(input_video_path, target_start_time_str, target_end_time=None, output_dir="output"):
+def cut_video_from_time_to_end(input_video_path, target_start_time, target_end_time=None, output_dir="output"):
     """
     根据绝对时间剪辑视频，从目标时间开始直到视频结束
 
@@ -1534,7 +1533,7 @@ def cut_video_from_time_to_end(input_video_path, target_start_time_str, target_e
         print(f"视频开始时间: {video_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
         # 解析目标时间
-        target_start_time = datetime.strptime(target_start_time_str, '%Y%m%d%H%M%S')
+        target_start_time = datetime.strptime(target_start_time, '%Y%m%d%H%M%S')
         print(f"目标开始时间: {target_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
         # 计算时间差（秒）
@@ -1589,7 +1588,7 @@ def cut_video_from_time_to_end(input_video_path, target_start_time_str, target_e
 
         # 生成输出文件名
         # 使用纯数字时间格式作为文件名
-        output_filename = f"{filename.rsplit('_', 2)[0]}_{target_start_time_str}_{video_end_time.strftime('%Y%m%d%H%M%S')}.MP4"
+        output_filename = f"{filename.rsplit('_', 2)[0]}_{target_start_time.strftime('%Y%m%d%H%M%S')}_{video_end_time.strftime('%Y%m%d%H%M%S')}.MP4"
         output_path = os.path.join(output_dir, output_filename)
 
         # 保存剪辑后的视频
@@ -1742,12 +1741,14 @@ if __name__ == '__main__':
         'edge_blur_radius': 7,
         'use_person_class_only': True
     }
-    batch_process_videos(input_dir=r"E:\数据\20231229 计算机网络考试数据汇总\第2组\视频\2021214372_姬高阳",
-                         **blur_params)
+    # batch_process_videos(input_dir=r"E:\数据\20231229 计算机网络考试数据汇总\第2组\视频\2021214372_姬高阳",
+    #                      **blur_params)
 
     # cut_video_from_time_to_end(
-    #     r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\processed\192.168.0.101_01_20231229150209_blurred.mp4",
-    #     "20231229150516", r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\新建文件夹")
+    #     r"E:\数据\20231229 计算机网络考试数据汇总\第6组\视频\2021214398_张颖\total\192.168.0.124_01_20231229160026_blurred.mp4",
+    #     "20231229160026",
+    #     "20231229160416",
+    #     r"E:\数据\20231229 计算机网络考试数据汇总\第6组\视频\2021214398_张颖\total\新建文件夹")
     # get_video_end_time(
     #     r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\新建文件夹\192.168.0.101_01_20231229150209_blurred.mp4")
-    # batch_rename_videos_with_duration(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\processed")
+    batch_rename_videos_with_duration(r"E:\数据\20231229 计算机网络考试数据汇总\第6组\视频\2021214398_张颖\total\新建文件夹")
