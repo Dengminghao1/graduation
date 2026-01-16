@@ -1,9 +1,8 @@
 import matplotlib
 import pandas as pd
-from matplotlib import pyplot as plt
-import seaborn as sns
+
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import GaussianNB
 from sklearn.preprocessing import StandardScaler

@@ -154,8 +154,7 @@ def batch_filter_eegs_by_videos(video_dir_path, eeg_file_path, output_eeg_dir_pa
             continue
 
         # 3. 确定输出的日志文件名
-        # 保持文件名一致，只是后缀改为 .txt (或者保留原文件名也行，看需求)
-        # 这里假设输出文件名为: 视频文件名.txt (例如: video_202301-202302.txt)
+
         base_name = os.path.basename(eeg_file_path)
         filename_no_ext = os.path.splitext(base_name)[0]
         time_range_str = f"{start_dt.strftime('%Y%m%d%H%M%S')}_{end_dt.strftime('%Y%m%d%H%M%S')}"

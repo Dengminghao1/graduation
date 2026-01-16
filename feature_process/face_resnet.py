@@ -32,7 +32,9 @@ def organize_frames_by_label(frame_folder, label_file, output_root):
     print("正在读取标签数据...")
     labels = {}
     with open(label_file, 'r', encoding='utf-8') as f:
-        for line in f:
+        for idx, line in enumerate(f):
+            if idx == 0:  # 跳过第一行（列名）
+                continue
             line = line.strip()
             if not line:
                 continue
@@ -70,8 +72,8 @@ def organize_frames_by_label(frame_folder, label_file, output_root):
             start_time = datetime.strptime(start_time_str, '%Y%m%d%H%M%S')
 
             # 计算当前帧对应的时间点
-            # 第0帧对应开始时间，每秒25帧
-            seconds_offset = frame_count / 25.0
+            # 第0帧对应开始时间，每秒10帧
+            seconds_offset = frame_count / 10.0
             current_time = start_time + timedelta(seconds=seconds_offset)
 
             # 找到最接近的标签（四舍五入到秒）
@@ -131,3 +133,12 @@ def organize_frames_by_label(frame_folder, label_file, output_root):
         if os.path.exists(folder_path):
             count = len([f for f in os.listdir(folder_path) if f.endswith('.jpg')])
             print(f"标签 '{label}' (文件夹 {folder}): {count} 个文件")
+
+if __name__ == "__main__":
+    frame_folder = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\extracted_frames"
+    label_file = r"D:\GraduationProject\demo1\output\2021214387_周婉婷.txt"
+    output_root = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\classified_frames"
+    organize_frames_by_label(
+        frame_folder=frame_folder,
+        label_file=label_file,
+        output_root=output_root)

@@ -3,6 +3,27 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
+        <entry key="E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\align_eeg_pose\aligned_eeg_pose_20231229150516_20231229151709.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\align_face_eeg\aligned_face_eeg_20231229150516_20231229151709.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\align_face_eeg_second\align_eeg_face_20231229150516_20231229151709.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs_csv\2021214387_周婉婷_20231229150516_20231229151709.csv">
           <value>
             <Attribute>
@@ -52,6 +73,34 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\pose_feature_merged\192.168.0.101_01_20231229150516_20231229151709.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\pose_feature_merged\192.168.0.101_01_20231229171016_20231229172016.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\pose_feature_merged\192.168.0.101_01_20231229172018_20231229173018.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\pose_feature_merged\192.168.0.101_01_20231229173019_20231229174018.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="E:\数据\20231229 计算机网络考试数据汇总\第6组\视频\2021214398_张颖\total\eeg_csv\2021214398_张颖_20231229125924_20231229130959.csv">
           <value>
             <Attribute>
@@ -63,6 +112,27 @@
           <value>
             <Attribute>
               <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\feature_process\192.168.0.101_01_20231229172018_20231229173018.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\output\align_eeg_face.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\output\align_eeg_pose.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
@@ -81,6 +151,20 @@
           </value>
         </entry>
         <entry key="\output\best_per_second_output.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\output\merged_face_eeg_feature_files.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\output\merged_keypoints.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

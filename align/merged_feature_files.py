@@ -1,49 +1,44 @@
-import pandas as pd
+import glob
 import os
 
+import pandas as pd
 
-def simple_merge_and_clean(directory, output_name="merged_clean.csv"):
+
+def merge_all_csvs_to_one(csv_folder, final_output_name):
     """
-    简化版：合并CSV并删除NaN行
+    将指定目录下所有的 CSV 文件合并为一个
+    csv_folder: 存放各个子 CSV 的目录
+    final_output_name: 合并后的总文件名
     """
-    # 获取所有CSV文件
-    files = [f for f in os.listdir(directory) if f.endswith('.csv')]
-    print(f"找到 {len(files)} 个CSV文件")
+    # 1. 获取目录下所有的 CSV 文件路径
+    csv_files = glob.glob(os.path.join(csv_folder, "*.csv"))
 
-    # 合并所有文件
-    dfs = []
-    for file in files:
-        df = pd.read_csv(os.path.join(directory, file))
-        df['source_file'] = file  # 标记来源文件
-        dfs.append(df)
+    if not csv_files:
+        print("没有找到可合并的 CSV 文件。")
+        return
 
-    # 合并
-    merged = pd.concat(dfs, ignore_index=True)
-    print(f"合并后总行数: {len(merged)}")
+    print(f"开始合并 {len(csv_files)} 个文件...")
 
-    # 查找attention列
-    for col in merged.columns:
-        if 'attention' in col.lower():
-            # 删除NaN行
-            before = len(merged)
-            cleaned = merged.dropna(subset=[col])
-            after = len(cleaned)
+    combined_list = []
 
-            print(f"删除前: {before} 行")
-            print(f"删除NaN后: {after} 行")
-            print(f"删除 {before - after} 行")
+    for file in csv_files:
+        # 读取单个 CSV
+        df = pd.read_csv(file)
 
-            # 保存
-            output_path = os.path.join(directory, output_name)
-            cleaned.to_csv(output_path, index=False)
-            print(f"已保存到: {output_path}")
-            return cleaned
+        combined_list.append(df)
 
-    print("未找到attention列")
-    return merged
+    # 2. 使用 pandas 快速合并
+    # ignore_index=True 重新排列行索引
+    master_df = pd.concat(combined_list, axis=0, ignore_index=True)
+
+    # 3. 保存最终文件
+    master_df.to_csv(final_output_name, index=False, encoding='utf-8-sig')
+
+    print(f"--- 合并完成 ---")
+    print(f"总行数: {len(master_df)}")
+    print(f"最终文件保存至: {final_output_name}")
 
 
-# 使用示例
 if __name__ == "__main__":
-    # 修改为你的目录路径
-    simple_merge_and_clean(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\align_face_eeg_second", r"D:\GraduationProject\demo1\output\align_face_eeg_second.csv")
+    merge_all_csvs_to_one(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\align_eeg_pose",
+                         r"D:\GraduationProject\demo1\output\merged_pose_eeg_feature_files.csv")
