@@ -123,9 +123,8 @@ def process_all_videos(input_dir, output_root, is_align=True, margin=20):
 
 if __name__ == "__main__":
     # 配置你的路径
-    INPUT_VIDEO_DIR = r'E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total'
-    OUTPUT_BASE_DIR = (r'D:\GraduationProject\demo1\output\frames'
-                       )
+    INPUT_VIDEO_DIR = r'/home/ccnu/Desktop/2021214387_周婉婷/total'
+    OUTPUT_BASE_DIR = r'/home/ccnu/Desktop/2021214387_周婉婷/total/extracted_frames'
 
     process_all_videos(
         input_dir=INPUT_VIDEO_DIR,

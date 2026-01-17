@@ -6,27 +6,24 @@ from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
 import os
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 
-# --- 1. 配置参数 ---
-data_dir = r"/home/ccnu/Desktop/2021214387_周婉婷/total/classified_frames"  # 你之前分类好的根目录
+# --- 1. 配置参数 (根据 24G 显存优化) ---
+data_dir = r"/home/ccnu/Desktop/2021214387_周婉婷/total/classified_frames"
 batch_size = 256
-num_epochs = 20
-learning_rate = 0.001
-num_classes = 5  # 低, 稍低, 中性, 稍高, 高
+start_epoch = 20  # 记录从第 21 轮开始
+total_epochs = 60  # 目标总轮数建议设为 60
+learning_rate = 0.0001  # 续训建议学习率减小 10 倍，进行微调
+num_classes = 5
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# --- 2. 数据增强与预处理 ---
-# ResNet 标准输入是 224x224
+# --- 2. 数据增强 (保持不变) ---
 data_transforms = {
     'train': transforms.Compose([
-        # transforms.Resize((224, 224)), # 确保万一有非224的图片进入
-        # transforms.CenterCrop(224),    # 仅仅是从中心截取，不进行随机变换
         transforms.Resize((256, 256)),
         transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),  # 数据增强
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  # ImageNet 标准标准化
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val': transforms.Compose([
         transforms.Resize((224, 224)),
@@ -35,22 +32,14 @@ data_transforms = {
     ]),
 }
 
-# --- 3. 加载数据集并划分训练/验证集 ---
+# --- 3. 加载数据 (保持不变) ---
 full_dataset = datasets.ImageFolder(data_dir)
-
-# 获取索引进行划分 (80% 训练, 20% 验证)
 train_idx, val_idx = train_test_split(
     list(range(len(full_dataset))),
-    test_size=0.2,
-    stratify=full_dataset.targets,  # 保持类别比例一致
-    random_state=42
+    test_size=0.2, stratify=full_dataset.targets, random_state=42
 )
 
-train_dataset = Subset(full_dataset, train_idx)
 
-
-
-# 修正：为训练和验证创建独立的实例以应用不同的 Transform
 class ApplyTransform(torch.utils.data.Dataset):
     def __init__(self, subset, transform=None):
         self.subset = subset
@@ -66,45 +55,47 @@ class ApplyTransform(torch.utils.data.Dataset):
 
 
 train_loader = DataLoader(ApplyTransform(Subset(full_dataset, train_idx), data_transforms['train']),
-                          batch_size=batch_size, shuffle=True, num_workers=4)
+                          batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
 val_loader = DataLoader(ApplyTransform(Subset(full_dataset, val_idx), data_transforms['val']),
-                        batch_size=batch_size, shuffle=False, num_workers=4)
+                        batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True)
 
-# --- 4. 构建 ResNet 模型 ---
-print(f"正在加载预训练 ResNet50 并运行在: {device}")
-model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-
-# 修改最后的全连接层以匹配你的 5 分类
+# --- 4. 构建模型并加载权重 (关键修改) ---
+model = models.resnet50(weights=None)  # 不再需要下载官方预训练权重
 num_ftrs = model.fc.in_features
 model.fc = nn.Linear(num_ftrs, num_classes)
+
+# 加载你之前训练好的权重
+weight_path = 'best_resnet_model.pth'
+if os.path.exists(weight_path):
+    print(f"正在加载已有权重: {weight_path}")
+    model.load_state_dict(torch.load(weight_path))
+else:
+    print("警告：未找到权重文件，将从零开始训练！")
+
 model = model.to(device)
 
-# --- 5. 损失函数与优化器 ---
+# --- 5. 损失函数与优化器 (增加 Scheduler) ---
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+# 自动调整学习率：如果验证集 Acc 3轮不升，学习率减半
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=3, factor=0.5)
 
 # --- 6. 训练循环 ---
-best_acc = 0.0
+best_acc = 0.5504  # 填入你之前的最佳准确率，只有超过它才会保存新模型
 
-for epoch in range(num_epochs):
-    print(f'Epoch {epoch + 1}/{num_epochs}')
+for epoch in range(start_epoch, total_epochs):
+    print(f'Epoch {epoch + 1}/{total_epochs}')
 
-    # 训练阶段
     model.train()
-    running_loss = 0.0
-    corrects = 0
-
+    running_loss, corrects = 0.0, 0
     for inputs, labels in tqdm(train_loader, desc="Training"):
         inputs, labels = inputs.to(device), labels.to(device)
-
         optimizer.zero_grad()
         outputs = model(inputs)
         loss = criterion(outputs, labels)
         _, preds = torch.max(outputs, 1)
-
         loss.backward()
         optimizer.step()
-
         running_loss += loss.item() * inputs.size(0)
         corrects += torch.sum(preds == labels.data)
 
@@ -123,11 +114,16 @@ for epoch in range(num_epochs):
 
     val_acc = val_corrects.double() / len(val_idx)
 
-    print(f'Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f} Val Acc: {val_acc:.4f}')
+    # 更新学习率调度器
+    scheduler.step(val_acc)
+    current_lr = optimizer.param_groups[0]['lr']
+
+    print(f'Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f} Val Acc: {val_acc:.4f} LR: {current_lr}')
 
     # 保存最佳模型
     if val_acc > best_acc:
         best_acc = val_acc
-        torch.save(model.state_dict(), 'best_resnet_model.pth')
+        torch.save(model.state_dict(), 'best_resnet_model_v2.pth')
+        print(f"检测到更高准确率，模型已更新保存。")
 
-print(f'训练完成! 最佳验证准确率: {best_acc:.4f}')
+print(f'续训完成! 最终最佳验证准确率: {best_acc:.4f}')
