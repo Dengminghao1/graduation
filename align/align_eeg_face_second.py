@@ -121,7 +121,7 @@ def align_eeg_with_facial_data(eeg_file, facial_file, output_file):
     output_data = facial_data.copy()
 
     # 将对齐的脑电attention添加到最后一列
-    output_data['eeg_attention'] = aligned_attention
+    output_data['attention'] = aligned_attention
 
     # 保存到文件
     output_data.to_csv(output_file, index=False)

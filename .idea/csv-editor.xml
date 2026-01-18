@@ -3,6 +3,13 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
+        <entry key="C:\Users\dengm\Desktop\openface2.0\OpenFace_2.2.0_win_x64\processed\vlcsnap-2026-01-15-16h29m44s235.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\align_eeg_pose\aligned_eeg_pose_20231229150516_20231229151709.csv">
           <value>
             <Attribute>
@@ -164,7 +171,21 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\output\merged_face_pose_eeg_feature_files.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\output\merged_keypoints.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\output\merged_pose_eeg_feature_files.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

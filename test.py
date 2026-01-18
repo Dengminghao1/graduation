@@ -75,12 +75,15 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         print(f"当前GPU: {torch.cuda.current_device()}")
         print(f"GPU名称: {torch.cuda.get_device_name()}")
-    # result = count_video_frames(
-    #     input_dir=r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total"
-    # )
-    #
-    # # 打印汇总
-    # if result:
-    #     print("\n汇总结果:")
-    #     for name, frames in result.items():
-    #         print(f"  {name}: {frames} 帧")
+    result = count_video_frames(
+        input_dir=r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total"
+    )
+    sum =0
+
+    # 打印汇总
+    if result:
+        print("\n汇总结果:")
+        for name, frames in result.items():
+            sum += frames
+            print(f"  {name}: {frames} 帧")
+    print(sum)
