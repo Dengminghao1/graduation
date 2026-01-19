@@ -17,11 +17,11 @@ def organize_frames_by_label(frame_folder, label_file, output_root):
 
     # 标签到文件夹的映射
     label_to_folder = {
-        '低': '1',
-        '稍低': '2',
-        '中性': '3',
-        '稍高': '4',
-        '高': '5'
+        '低': '0',
+        '稍低': '1',
+        '中性': '2',
+        '稍高': '3',
+        '高': '4'
     }
 
     # 确保输出目录存在

@@ -129,6 +129,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\output\2021214387_周婉婷.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\output\align_eeg_face.csv">
           <value>
             <Attribute>

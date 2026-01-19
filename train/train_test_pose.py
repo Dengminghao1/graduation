@@ -54,11 +54,11 @@ matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 X = df[feature_columns]
 y = df[target_column]
 label_mapping={
-    '低':1,
-    '稍低':2,
-    '中性':3,
-    '稍高':4,
-    '高':5
+    '低':0,
+    '稍低':1,
+    '中性':2,
+    '稍高':3,
+    '高':4
 }
 # 如果注意力是分类变量，需要先编码（如果是字符串标签）
 if y.dtype == 'object':

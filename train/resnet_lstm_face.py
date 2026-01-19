@@ -1,14 +1,18 @@
 import glob
+
+from matplotlib import pyplot as plt
 from torch import nn, optim, autocast
 from torch.cuda.amp import GradScaler
 import os
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 from torchvision import transforms, models
 from PIL import Image
 from datetime import datetime, timedelta
 from collections import defaultdict
+
+from tqdm import tqdm
 
 
 class MultiSegmentAttentionDataset(Dataset):
@@ -20,11 +24,11 @@ class MultiSegmentAttentionDataset(Dataset):
         # 1. 加载标签
         self.label_df = pd.read_csv(csv_path)
         self.label_df['timestamp'] = pd.to_datetime(self.label_df['timestamp'])
-        self.label_map = {'低': 1,
-                          '稍低': 2,
-                          '中性': 3,
-                          '稍高': 4,
-                          '高': 5}
+        self.label_map = {'低': 0,
+                          '稍低': 1,
+                          '中性': 2,
+                          '稍高': 3,
+                          '高': 4}
 
         # 2. 解析文件并按“段”分组
         # key: (start_time_str, end_time_str), value: list of file_info
@@ -68,7 +72,7 @@ class MultiSegmentAttentionDataset(Dataset):
                     label_str = matched.iloc[-1]['attention']
                     self.valid_sequences.append({
                         'files': [x['filename'] for x in seq_frames],
-                        'label': self.label_map.get(label_str, 3)  # 默认“一般”
+                        'label': self.label_map.get(label_str, 2)  # 默认“一般”
                     })
         print(f"Total sequences created: {len(self.valid_sequences)}")
 
@@ -154,6 +158,7 @@ class ResNet50LSTM(nn.Module):
 # ===========================
 if __name__ == '__main__':
     # --- 配置 ---
+    # r"/home/ccnu/Desktop/2021214387_周婉婷/total/classified_frames"
     IMG_DIR = r'E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\extracted_frames'  # <-- 修改这里
     CSV_PATH = r'D:\GraduationProject\demo1\output\2021214387_周婉婷.csv'  # <-- 修改这里
 
@@ -162,7 +167,7 @@ if __name__ == '__main__':
 
     # 针对 4090 的超参数设置
     BATCH_SIZE = 24  # 24G 显存可以尝试 24 或 32
-    SEQ_LEN = 30  # 输入 3 秒的视频 (10fps * 3s)
+    SEQ_LEN = 10  # 输入 1 秒的视频 (10fps * 3s)
     NUM_EPOCHS = 15
     LEARNING_RATE = 3e-5  # 微调时学习率要小
     NUM_CLASSES = 5
@@ -175,40 +180,50 @@ if __name__ == '__main__':
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    # --- 实例化数据和模型 ---
-    dataset = MultiSegmentAttentionDataset(img_dir=IMG_DIR, csv_path=CSV_PATH, seq_len=SEQ_LEN, transform=transform)
+    # --- 1. 数据集切分与加载 ---
+    # 假设你的 MultiSegmentAttentionDataset 类已经在上方定义好
+    print("正在初始化数据集...")
+    full_dataset = MultiSegmentAttentionDataset(img_dir=IMG_DIR, csv_path=CSV_PATH, seq_len=SEQ_LEN,
+                                                transform=transform)
 
-    # num_workers=8 利用多核CPU加速数据读取，pin_memory=True 加速数据传入GPU
-    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=8, pin_memory=True)
+    # 按照 8:2 切分训练集和验证集
+    # 注意：对于视频，更好的方式是按视频文件切分，这里先使用随机切分索引
+    train_size = int(0.8 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=8, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=8, pin_memory=True)
+
+    # --- 2. 模型初始化 ---
     model = ResNet50LSTM(num_classes=NUM_CLASSES).to(DEVICE)
-
-    # 损失函数和优化器
-    # 如果你的数据类别严重不平衡（例如“高”特别多），考虑给 CrossEntropyLoss 添加 weight 参数
     criterion = nn.CrossEntropyLoss()
-    # 使用 AdamW 优化器，对微调效果更好
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
-
-    # 混合精度训练 GradScaler
     scaler = GradScaler()
 
-    # --- 训练准备 ---
-    best_acc = 0.0  # 初始化最高准确率为0
-    best_model_name = ""
+    # 用于绘图的列表
+    history = {
+        'train_loss': [], 'train_acc': [],
+        'val_loss': [], 'val_acc': []
+    }
 
-    print("开始训练...")
+    best_val_acc = 0.0
+    print(f"开始训练... 训练样本: {len(train_dataset)}, 验证样本: {len(val_dataset)}")
 
+    # --- 3. 训练循环 ---
     for epoch in range(NUM_EPOCHS):
+        # --- 1. 训练阶段 (Training Phase) ---
         model.train()
-        running_loss = 0.0
-        correct_preds = 0
-        total_preds = 0
+        train_loss, train_correct, train_total = 0.0, 0, 0
 
-        for i, (inputs, labels) in enumerate(train_loader):
+        # 使用 tqdm 包装 train_loader
+        train_bar = tqdm(train_loader, desc=f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Train")
+
+        for inputs, labels in train_bar:
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
             optimizer.zero_grad()
 
-            with autocast():
+            with autocast(device_type='cuda'):
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
 
@@ -216,40 +231,88 @@ if __name__ == '__main__':
             scaler.step(optimizer)
             scaler.update()
 
-            # 统计信息
-            running_loss += loss.item() * inputs.size(0)
+            # 统计数据
+            current_batch_size = inputs.size(0)
+            train_loss += loss.item() * current_batch_size
             _, predicted = torch.max(outputs, 1)
-            total_preds += labels.size(0)
-            correct_preds += (predicted == labels).sum().item()
+            train_total += labels.size(0)
+            train_correct += (predicted == labels).sum().item()
 
-            if (i + 1) % 10 == 0:
-                print(f"[Epoch {epoch + 1}/{NUM_EPOCHS}, Step {i + 1}] Loss: {loss.item():.4f}")
+            # 动态更新进度条右侧的显示信息 (当前 batch 的 loss)
+            train_bar.set_postfix(loss=f"{loss.item():.4f}")
 
-        # 计算该 Epoch 的平均指标
-        epoch_loss = running_loss / len(dataset)
-        epoch_acc = correct_preds / total_preds
-        print(f"--- Epoch {epoch + 1} Finished. Avg Loss: {epoch_loss:.4f}, Accuracy: {epoch_acc:.4f} ---")
+        avg_train_loss = train_loss / len(train_dataset)
+        avg_train_acc = train_correct / train_total
 
-        # --- 核心修改：仅保存最好的模型 ---
-        if epoch_acc > best_acc:
-            # 1. 更新最高准确率记录
-            best_acc = epoch_acc
+        # --- 2. 验证阶段 (Validation Phase) ---
+        model.eval()
+        val_loss, val_correct, val_total = 0.0, 0, 0
 
-            # 2. 删除之前保存过的 best_model 文件（防止硬盘堆积）
-            # 搜索目录下所有以 'best_model_acc_' 开头的文件并删除
+        # 验证集也建议加上进度条，尤其当验证集较大时
+        val_bar = tqdm(val_loader, desc=f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Val")
+
+        with torch.no_grad():
+            for inputs, labels in val_bar:
+                inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
+
+                with autocast(device_type='cuda'):
+                    outputs = model(inputs)
+                    v_loss = criterion(outputs, labels)
+
+                val_loss += v_loss.item() * inputs.size(0)
+                _, predicted = torch.max(outputs, 1)
+                val_total += labels.size(0)
+                val_correct += (predicted == labels).sum().item()
+
+                val_bar.set_postfix(val_loss=f"{v_loss.item():.4f}")
+
+        avg_val_loss = val_loss / len(val_dataset)
+        avg_val_acc = val_correct / val_total
+
+        # --- 3. 结果记录与保存 ---
+        history['train_loss'].append(avg_train_loss)
+        history['train_acc'].append(avg_train_acc)
+        history['val_loss'].append(avg_val_loss)
+        history['val_acc'].append(avg_val_acc)
+
+        # 打印最终汇总结果
+        print(f"\nSummary - Epoch [{epoch + 1}/{NUM_EPOCHS}]: "
+              f"Train Loss: {avg_train_loss:.4f} Acc: {avg_train_acc:.4f} | "
+              f"Val Loss: {avg_val_loss:.4f} Acc: {avg_val_acc:.4f}")
+
+        if avg_val_acc > best_val_acc:
+            best_val_acc = avg_val_acc
             for old_file in glob.glob("best_model_acc_*.pth"):
-                try:
-                    os.remove(old_file)
-                except:
-                    pass
+                os.remove(old_file)
 
-                    # 3. 构造新的文件名并保存
-            # 例如：best_model_acc_9542.pth
-            save_path = f'best_model_acc_{int(best_acc*10000)}.pth'
+            acc_suffix = int(best_val_acc * 10000)
+            save_path = f'best_model_acc_{acc_suffix}.pth'
             torch.save(model.state_dict(), save_path)
+            print(f"🌟 发现更优模型: {save_path}")
 
-            print(f"🌟 检测到更好的模型！准确率提高到: {best_acc:.4f}，已保存为 {save_path}")
-        else:
-            print(f"ℹ️ 本轮准确率 ({epoch_acc:.4f}) 未超过历史最好成绩 ({best_acc:.4f})，不保存。")
+    # --- 4. 绘制结果图像 ---
+    plt.figure(figsize=(12, 5))
 
-    print(f"训练结束! 最好的模型准确率为: {best_acc:.4f}")
+    # 绘制 Loss 曲线
+    plt.subplot(1, 2, 1)
+    plt.plot(history['train_loss'], label='Train Loss')
+    plt.plot(history['val_loss'], label='Val Loss')
+    plt.title('Training & Validation Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    # 绘制 Accuracy 曲线
+    plt.subplot(1, 2, 2)
+    plt.plot(history['train_acc'], label='Train Acc')
+    plt.plot(history['val_acc'], label='Val Acc')
+    plt.title('Training & Validation Accuracy')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.savefig('training_results.png')
+    plt.show()
+
+    print(f"训练结束! 最佳验证集准确率: {best_val_acc:.4f}")

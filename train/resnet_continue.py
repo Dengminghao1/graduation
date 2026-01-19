@@ -1,6 +1,11 @@
+import glob
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from matplotlib import pyplot as plt
+from torch import autocast
+from torch.cuda.amp import GradScaler
 from torchvision import datasets, transforms, models
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
@@ -77,53 +82,139 @@ model = model.to(device)
 # --- 5. 损失函数与优化器 (增加 Scheduler) ---
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-# 自动调整学习率：如果验证集 Acc 3轮不升，学习率减半
+# 如果是续训，建议初始化为空列表；如果你有之前的历史数据也可以在此加载
+history = {
+    'train_loss': [], 'train_acc': [],
+    'val_loss': [], 'val_acc': []
+}
+
+# 混合精度缩放器（RTX 4090 必备）
+scaler = GradScaler()
+
+# 自动调整学习率
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=3, factor=0.5)
 
-# --- 6. 训练循环 ---
-best_acc = 0.5504  # 填入你之前的最佳准确率，只有超过它才会保存新模型
+# --- 2. 训练循环 ---
+best_acc = 0.5504  # 初始最佳准确率
+total_epochs = 15  # 举例
+start_epoch = 0  # 如果从头开始是0，如果是续训需手动指定或从checkpoint读取
+
+print(f"开始续训... 目标 Epochs: {total_epochs}, 当前最佳 Acc: {best_acc:.4f}")
 
 for epoch in range(start_epoch, total_epochs):
-    print(f'Epoch {epoch + 1}/{total_epochs}')
-
+    # --- 训练阶段 ---
     model.train()
-    running_loss, corrects = 0.0, 0
-    for inputs, labels in tqdm(train_loader, desc="Training"):
+    train_running_loss = 0.0
+    train_corrects = 0
+    train_total = 0
+
+    # 使用 tqdm 包装并显示当前 Epoch 信息
+    train_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{total_epochs} [Train]")
+
+    for inputs, labels in train_bar:
         inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
-        _, preds = torch.max(outputs, 1)
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item() * inputs.size(0)
-        corrects += torch.sum(preds == labels.data)
 
-    epoch_loss = running_loss / len(train_idx)
-    epoch_acc = corrects.double() / len(train_idx)
-
-    # 验证阶段
-    model.eval()
-    val_corrects = 0
-    with torch.no_grad():
-        for inputs, labels in val_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
+        # 4090 混合精度前向传播
+        with autocast(device_type='cuda'):
             outputs = model(inputs)
+            loss = criterion(outputs, labels)
+
+        # 反向传播缩放
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+
+        # 统计信息
+        batch_size = inputs.size(0)
+        train_running_loss += loss.item() * batch_size
+        _, preds = torch.max(outputs, 1)
+        train_corrects += torch.sum(preds == labels.data)
+        train_total += batch_size
+
+        # 更新 tqdm 右侧信息
+        train_bar.set_postfix(loss=f"{loss.item():.4f}")
+
+    epoch_train_loss = train_running_loss / train_total
+    epoch_train_acc = train_corrects.double() / train_total
+
+    # --- 验证阶段 ---
+    model.eval()
+    val_running_loss = 0.0
+    val_corrects = 0
+    val_total = 0
+
+    val_bar = tqdm(val_loader, desc=f"Epoch {epoch + 1}/{total_epochs} [Val]")
+
+    with torch.no_grad():
+        for inputs, labels in val_bar:
+            inputs, labels = inputs.to(device), labels.to(device)
+
+            with autocast(device_type='cuda'):
+                outputs = model(inputs)
+                v_loss = criterion(outputs, labels)
+
+            batch_size = inputs.size(0)
+            val_running_loss += v_loss.item() * batch_size
             _, preds = torch.max(outputs, 1)
             val_corrects += torch.sum(preds == labels.data)
+            val_total += batch_size
 
-    val_acc = val_corrects.double() / len(val_idx)
+            val_bar.set_postfix(v_loss=f"{v_loss.item():.4f}")
+
+    epoch_val_loss = val_running_loss / val_total
+    epoch_val_acc = val_corrects.double() / val_total
 
     # 更新学习率调度器
-    scheduler.step(val_acc)
+    scheduler.step(epoch_val_acc)
     current_lr = optimizer.param_groups[0]['lr']
 
-    print(f'Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f} Val Acc: {val_acc:.4f} LR: {current_lr}')
+    # 记录历史数据用于绘图
+    history['train_loss'].append(epoch_train_loss)
+    history['train_acc'].append(epoch_train_acc.item())
+    history['val_loss'].append(epoch_val_loss)
+    history['val_acc'].append(epoch_val_acc.item())
 
-    # 保存最佳模型
-    if val_acc > best_acc:
-        best_acc = val_acc
-        torch.save(model.state_dict(), 'best_resnet_model_v2.pth')
-        print(f"检测到更高准确率，模型已更新保存。")
+    # 打印 Epoch 总结
+    print(f"\n[Summary] Train Loss: {epoch_train_loss:.4f} Acc: {epoch_train_acc:.4f} | "
+          f"Val Loss: {epoch_val_loss:.4f} Acc: {epoch_val_acc:.4f} | LR: {current_lr}")
+
+    # --- 保存最佳模型 (文件名去 0.) ---
+    if epoch_val_acc > best_acc:
+        best_acc = epoch_val_acc
+        # 清理旧的 best 模型
+        for old_file in glob.glob("best_model_acc_*.pth"):
+            os.remove(old_file)
+
+        acc_suffix = int(best_acc * 10000)
+        save_path = f'best_model_acc_{acc_suffix}.pth'
+        torch.save(model.state_dict(), save_path)
+        print(f"🌟 检测到更高准确率，已保存新模型: {save_path}")
+
+# --- 3. 绘制并保存学习曲线 ---
+plt.figure(figsize=(12, 5))
+
+# Loss 图像
+plt.subplot(1, 2, 1)
+plt.plot(history['train_loss'], label='Train Loss')
+plt.plot(history['val_loss'], label='Val Loss')
+plt.title('Training & Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+
+# Acc 图像
+plt.subplot(1, 2, 2)
+plt.plot(history['train_acc'], label='Train Acc')
+plt.plot(history['val_acc'], label='Val Acc')
+plt.axhline(y=best_acc, color='g', linestyle='--', label='Previous Best')  # 标出续训前的基准线
+plt.title('Training & Validation Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.tight_layout()
+plt.savefig('resume_training_results.png')
+plt.show()
 
 print(f'续训完成! 最终最佳验证准确率: {best_acc:.4f}')
