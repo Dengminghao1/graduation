@@ -23,7 +23,7 @@ if start_column in df.columns and end_column in df.columns:
     all_cols = df.columns.tolist()
     start_idx = all_cols.index(start_column)
     end_idx = all_cols.index(end_column)
-    feature_columns = all_cols[start_idx:end_idx+1]
+    feature_columns = all_cols[start_idx:end_idx + 1]
 
     # 过滤掉以 'conf' 开头的列和从 'AU01_r' 到 'file_name' 的列
 
@@ -37,7 +37,6 @@ if start_column in df.columns and end_column in df.columns:
     # 创建要过滤的列集合
     columns_to_exclude = set(all_cols[filter_start:filter_end + 1])
 
-
     feature_columns = [
         col for col in feature_columns
         if not col.lower().startswith('conf') and col not in columns_to_exclude
@@ -46,7 +45,6 @@ if start_column in df.columns and end_column in df.columns:
     print(f"特征个数: {len(feature_columns)}")
 else:
     print(f"警告: 找不到列 {start_column} 或 {end_column}")
-
 
 target_column = 'attention_y'  # 请根据实际列名修改
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
@@ -70,16 +68,16 @@ matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 # 分离特征和目标
 X = df[feature_columns]
 y = df[target_column]
-label_mapping={
-    '低':1,
-    '稍低':2,
-    '中性':3,
-    '稍高':4,
-    '高':5
+label_mapping = {
+    '低': 1,
+    '稍低': 2,
+    '中性': 3,
+    '稍高': 4,
+    '高': 5
 }
 # 如果注意力是分类变量，需要先编码（如果是字符串标签）
 if y.dtype == 'object':
-    y=y.map(label_mapping)
+    y = y.map(label_mapping)
 
 # 重新划分数据集
 X_train, X_test, y_train, y_test = train_test_split(
@@ -93,11 +91,11 @@ X_test_scaled = scaler.transform(X_test)
 
 # 分类模型
 class_models = {
-    '逻辑回归': LogisticRegression(max_iter=10000, random_state=42),
-    '贝叶斯': GaussianNB() ,
+    # '逻辑回归': LogisticRegression(max_iter=10000, random_state=42),
+    # '贝叶斯': GaussianNB() ,
     '决策树': DecisionTreeClassifier(random_state=42),
     '随机森林': RandomForestClassifier(n_estimators=100, random_state=42),
-    'SVM': SVC(kernel='rbf', probability=True, random_state=42)
+    # 'SVM': SVC(kernel='rbf', probability=True, random_state=42)
 }
 
 class_results = {}
@@ -148,5 +146,3 @@ for name, model in class_models.items():
     print("分类报告:")
     print(classification_report(y_test, y_pred))
     # print(classification_report(y_train, y_pred))
-
-

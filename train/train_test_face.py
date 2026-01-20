@@ -11,7 +11,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.tree import DecisionTreeClassifier
 
 # 读取数据
-df = pd.read_csv(r"D:\GraduationProject\demo1\output\align_face_eeg_second.csv")
+df = pd.read_csv(r"D:\GraduationProject\demo1\output\merged_face_eeg_feature_files.csv")
 
 # 去除列名中的空格，并选择从 gaze_0_x 到 p_33 之间的列
 df.columns = df.columns.str.strip()  # 去除列名首尾空格
@@ -22,7 +22,7 @@ df.columns = df.columns.str.strip()  # 去除列名首尾空格
 # x_0 y_67 X_0 Z_67
 # p_scale p_rx p_ty p_0 p_33
 start_column = 'gaze_0_x'
-end_column = 'p_33'
+end_column = 'eye_lmk_Z_55'
 
 if start_column in df.columns and end_column in df.columns:
     all_cols = df.columns.tolist()
@@ -34,7 +34,7 @@ else:
     print(f"警告: 找不到列 {start_column} 或 {end_column}")
 
 
-target_column = 'eeg_attention'  # 请根据实际列名修改
+target_column = 'attention'  # 请根据实际列名修改
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
 matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 

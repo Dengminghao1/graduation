@@ -26,11 +26,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # ResNet 标准输入是 224x224
 data_transforms = {
     'train': transforms.Compose([
-        # transforms.Resize((224, 224)), # 确保万一有非224的图片进入
-        # transforms.CenterCrop(224),    # 仅仅是从中心截取，不进行随机变换
-        transforms.Resize((256, 256)),
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),  # 数据增强
+        transforms.Resize((224, 224)), # 确保万一有非224的图片进入
+        transforms.CenterCrop(224),    # 仅仅是从中心截取，不进行随机变换
+        # transforms.Resize((256, 256)),
+        # transforms.RandomResizedCrop(224),
+        # transforms.RandomHorizontalFlip(),  # 数据增强
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  # ImageNet 标准标准化
     ]),

@@ -52,29 +52,48 @@ class MultiSegmentAttentionDataset(Dataset):
 
         # 3. 在每个段内构建连续序列
         self.valid_sequences = []
+        all_files = [f for f in os.listdir(self.img_dir) if f.endswith('.jpg')]
+
+        for f in all_files:
+            parts = f.split('_')
+            frame_idx = int(parts[1])
+            s_time_str, e_time_str = parts[4], parts[5].replace('.jpg', '')
+
+            start_dt = datetime.strptime(s_time_str, "%Y%m%d%H%M%S")
+            curr_dt = start_dt + timedelta(seconds=frame_idx * 0.1)
+
+            segments[(s_time_str, e_time_str)].append({
+                'filename': f,
+                'time': curr_dt,
+                'idx': frame_idx
+            })
+
+        # 3. 每段内：严格按“1 秒 = 10 帧”构建样本
+        self.valid_sequences = []
+        print("正在按秒匹配标签并构建序列...")
+
         for seg_key in segments:
             # 确保段内按帧序号排序
             seg_files = sorted(segments[seg_key], key=lambda x: x['idx'])
 
-            # 在当前段内滑动窗口
-            for i in range(len(seg_files) - seq_len):
+            # stride=10 意味着每一秒提取一个序列
+            # 如果想让数据更丰富，可以减小 stride；如果想减少冗余，stride 应等于 10
+            for i in range(0, len(seg_files) - seq_len, 10):
                 seq_frames = seg_files[i: i + seq_len]
                 end_frame_time = seq_frames[-1]['time']
 
-                # 匹配最接近的标签（精确到秒）
-                # 寻找标签时间与帧时间误差在1秒以内的记录
-                matched = self.label_df[
-                    (self.label_df['timestamp'] >= end_frame_time - timedelta(seconds=1)) &
-                    (self.label_df['timestamp'] <= end_frame_time + timedelta(seconds=1))
-                    ]
+                # --- 优化匹配逻辑：寻找 1 秒内最准的那一刻 ---
+                time_diffs = (self.label_df['timestamp'] - end_frame_time).abs()
+                closest_idx = time_diffs.idxmin()
+                min_diff = time_diffs.min()
 
-                if not matched.empty:
-                    label_str = matched.iloc[-1]['attention']
+                if min_diff <= timedelta(seconds=1):
+                    label_str = self.label_df.loc[closest_idx, 'attention']
                     self.valid_sequences.append({
                         'files': [x['filename'] for x in seq_frames],
-                        'label': self.label_map.get(label_str, 2)  # 默认“一般”
+                        'label': self.label_map.get(label_str, 2)
                     })
-        print(f"Total sequences created: {len(self.valid_sequences)}")
+        print(f"成功创建序列总数: {len(self.valid_sequences)}")
 
     def __len__(self):
         return len(self.valid_sequences)
