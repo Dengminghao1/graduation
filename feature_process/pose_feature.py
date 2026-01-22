@@ -79,9 +79,9 @@ def batch_process_all_folders(root_dir, output_root):
 
 # --- 参数配置 ---
 # 1. 包含多个文件夹的父目录路径
-input_parent_dir = r'E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\pose_feature'  # 替换为你的 JSON 文件夹路径
+input_parent_dir = r"C:\Users\dengm\Desktop\fsdownload\pose_10pfs"  # 替换为你的 JSON 文件夹路径
 # 2. 存放生成的多个 CSV 文件的目标目录
-output_save_dir = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\pose_feature_merged"
+output_save_dir = r"C:\Users\dengm\Desktop\fsdownload\pose_feature_merged"
 # 执行批量处理
 batch_process_all_folders(input_parent_dir, output_save_dir)
 

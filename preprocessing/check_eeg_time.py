@@ -3,7 +3,7 @@ import pandas as pd
 
 # ================= 配置区域 =================
 # 请修改为你的目录路径
-dir_path = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs_csv"
+dir_path = r"D:\dataset\eeg_csv"
 
 # 如果你的 CSV 文件第一行是标题（如 Time, Label），设为 0
 # 如果第一行就是数据，设为 None

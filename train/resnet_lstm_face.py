@@ -180,6 +180,8 @@ if __name__ == '__main__':
     # r"/home/ccnu/Desktop/2021214387_周婉婷/total/classified_frames"
     IMG_DIR = r'E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\extracted_frames'  # <-- 修改这里
     CSV_PATH = r'D:\GraduationProject\demo1\output\2021214387_周婉婷.csv'  # <-- 修改这里
+    # IMG_DIR = r'/home/ccnu/Desktop/2021214387_周婉婷/total/extracted_frames'  # <-- 修改这里
+    # CSV_PATH = r'/home/ccnu/Desktop/2021214387_周婉婷/total/2021214387_周婉婷.csv'  # <-- 修改这里
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {DEVICE}")

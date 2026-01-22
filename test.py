@@ -76,7 +76,7 @@ if __name__ == "__main__":
         print(f"当前GPU: {torch.cuda.current_device()}")
         print(f"GPU名称: {torch.cuda.get_device_name()}")
     result = count_video_frames(
-        input_dir=r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total"
+        input_dir=r"C:\Users\dengm\Desktop\dataset\blur_video"
     )
     sum =0
 

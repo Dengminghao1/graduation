@@ -43,13 +43,8 @@ def process_single_image(img_path, output_full_path, mtcnn, is_align=True, margi
     boxes, probs, landmarks = mtcnn.detect(img_rgb, landmarks=True)
 
     if boxes is not None:
-        # 确保输出目录存在
-        output_dir = os.path.dirname(output_full_path)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-
+        # --- 情况1：检测到人脸 ---
         for i, (box, landmark) in enumerate(zip(boxes, landmarks)):
-            if probs[i] < 0.95: continue
 
             target_img = get_aligned_face(img, landmark) if is_align else img
             x1, y1, x2, y2 = box
@@ -59,9 +54,15 @@ def process_single_image(img_path, output_full_path, mtcnn, is_align=True, margi
             face = target_img[ny1:ny2, nx1:nx2]
             if face.size > 0:
                 face_final = letterbox_resize(face, target_size=size)
-                # 直接使用传入的完整路径保存
                 cv2.imwrite(str(output_full_path), face_final)
-                break # 识别到第一张高质量人脸后保存并退出，若需保存多张可调整逻辑
+                break  # 保存第一张高质量人脸后退出
+    else:
+        # --- 情况2：未检测到人脸 (新增逻辑) ---
+        # 直接将原帧图像缩放到目标尺寸并保存
+        # 注意：这里处理的是原图 img，而不是 img_rgb
+        img_final = letterbox_resize(img, target_size=size)
+        cv2.imwrite(str(output_full_path), img_final)
+
 
 def process_single_video(video_path, output_dir, mtcnn, is_align=True, margin=20, size=(224, 224)):
     """处理单个视频并按指定格式保存文件名"""
@@ -83,7 +84,6 @@ def process_single_video(video_path, output_dir, mtcnn, is_align=True, margin=20
 
         if boxes is not None:
             for i, (box, landmark) in enumerate(zip(boxes, landmarks)):
-                if probs[i] < 0.95: continue
 
                 target_img = get_aligned_face(frame, landmark) if is_align else frame
                 x1, y1, x2, y2 = box

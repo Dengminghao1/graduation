@@ -40,5 +40,5 @@ def merge_all_csvs_to_one(csv_folder, final_output_name):
 
 
 if __name__ == "__main__":
-    merge_all_csvs_to_one(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\align_eeg_pose",
-                         r"D:\GraduationProject\demo1\output\merged_pose_eeg_feature_files.csv")
+    merge_all_csvs_to_one(r"C:\Users\dengm\Desktop\dataset\align_eeg_pose",
+                         r"C:\Users\dengm\Desktop\dataset\merged_pose_eeg_feature_files.csv")

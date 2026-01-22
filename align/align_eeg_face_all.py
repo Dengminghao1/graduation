@@ -72,7 +72,14 @@ def align_face_with_eeg(eeg_file, face_file, output_file):
     aligned_df_filtered = aligned_df[aligned_df['attention'].notna()]
     aligned_df_filtered.to_csv(output_file, index=False, encoding='utf-8-sig')
 
+    # 输出未成功匹配的数据
+    unmatched_df = aligned_df[aligned_df['attention'].isna()]
+    unmatched_output_file = output_file.replace('.csv', '_unmatched.csv')
+    unmatched_df.to_csv(unmatched_output_file, index=False, encoding='utf-8-sig')
+
     print(f"  对齐完成！匹配成功: {len(aligned_df_filtered)} / {len(face_data)} 帧")
+    print(f"  未匹配数据已保存至: {unmatched_output_file}")
+    print(f"  未匹配数量: {len(unmatched_df)} 帧")
 
 
 def batch_process_face_eeg(eeg_dir, face_dir, output_dir):
@@ -94,9 +101,9 @@ def batch_process_face_eeg(eeg_dir, face_dir, output_dir):
 
 if __name__ == "__main__":
     # 配置路径
-    eeg_directory = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs_csv"
-    face_directory = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\face_feature"
-    output_directory = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\align_face_eeg"
+    eeg_directory = r"D:\dataset\eeg_csv"
+    face_directory = r"D:\dataset\face_feature"
+    output_directory = r"C:\Users\dengm\Desktop\dataset\align_face_eeg"
 
     batch_process_face_eeg(eeg_directory, face_directory, output_directory)
     # eeg_file = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs_csv\2021214387_周婉婷_20231229150516_20231229151709.csv"

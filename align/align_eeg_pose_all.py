@@ -109,11 +109,11 @@ if __name__ == "__main__":
 
     # align_eeg_with_keypoints(eeg_file, keypoints_file, output_file)
 
-    eeg_dir = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\eegs_csv"
+    eeg_dir = r"D:\dataset\eeg_csv"
 
-    kp_dir = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\pose_feature_merged"
+    kp_dir = r"D:\dataset\pose_feature"
 
-    output_dir = r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\align_eeg_pose"
+    output_dir = r"C:\Users\dengm\Desktop\dataset\align_eeg_pose"
     # 在这里指定帧率
     VIDEO_FPS = 10
     batch_process(eeg_dir, kp_dir, output_dir,VIDEO_FPS)

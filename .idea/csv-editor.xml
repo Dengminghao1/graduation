@@ -3,7 +3,224 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
+        <entry key="C:\Users\dengm\Desktop\dataset\align_face_eeg\aligned_face_eeg_20231229153000_20231229154000_unmatched.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\align_face_eeg\aligned_face_eeg_20231229170014_20231229171014_unmatched.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\merged_face_eeg_feature_files.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\merged_face_pose_eeg_feature_files.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\merged_face_pose_eeg_feature_files_new.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\merged_face_pose_eeg_feature_files_new1.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\merged_face_pose_eeg_feature_files_new2.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\merged_face_pose_eeg_feature_files_new3.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\merged_pose_eeg_feature_files.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\test\192.168.0.101_01_20231229165012_20231229170013.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\test\192.168.0.124_01_20231229125924_20231229130959.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\test\192.168.0.124_01_20231229134004_20231229135004.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\test\192.168.0.124_01_20231229141009_20231229142009.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\test——pose\192.168.0.101_01_20231229153000_20231229154000.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\eeg\eegs_csv\2021214387_周婉婷_20231229153000_20231229154000.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\eeg\eegs_csv\2021214387_周婉婷_20231229161007_20231229162008.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\eeg\eegs_csv\2021214387_周婉婷_20231229164011_20231229165010.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\eeg\new_eeg_csv\2021214387_周婉婷_20231229161007_20231229162008.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\eegs_csv\2021214387_周婉婷_20231229153000_20231229154000.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\fsdownload\pose_feature_merged\192.168.0.124_01_20231229125924_20231229130959.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\fsdownload\pose_feature_merged\192.168.0.124_01_20231229160026_20231229160416.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\openface2.0\OpenFace_2.2.0_win_x64\processed\192.168.0.124_01_20231229125924_20231229130959.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\openface2.0\OpenFace_2.2.0_win_x64\processed\192.168.0.124_01_20231229131000_20231229132001.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\openface2.0\OpenFace_2.2.0_win_x64\processed\192.168.0.124_01_20231229140008_20231229141009.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\openface2.0\OpenFace_2.2.0_win_x64\processed\192.168.0.124_01_20231229145015_20231229150015.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\openface2.0\OpenFace_2.2.0_win_x64\processed\192.168.0.124_01_20231229153021_20231229154021.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="C:\Users\dengm\Desktop\openface2.0\OpenFace_2.2.0_win_x64\processed\vlcsnap-2026-01-15-16h29m44s235.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="D:\dataset\face_feature\192.168.0.101_01_20231229153000_20231229154000.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="D:\dataset\face_feature\192.168.0.124_01_20231229125924_20231229130959.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="D:\dataset\face_feature\192.168.0.124_01_20231229135006_20231229140005.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="D:\dataset\pose_feature\192.168.0.101_01_20231229153000_20231229154000.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="D:\dataset\pose_feature\192.168.0.124_01_20231229143013_20231229144013.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

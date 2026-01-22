@@ -101,8 +101,8 @@ def batch_process_parallel(input_dir, output_base_dir="output", openpose_exe=r".
 # 使用示例
 if __name__ == "__main__":
     batch_process_parallel(
-        input_dir=r"/home/ccnu/Desktop/total",
-        output_base_dir=r"/home/ccnu/Desktop/total/pose_feature",
+        input_dir=r"/home/ccnu/Desktop/2021214398_张颖/total",
+        output_base_dir=r"/home/ccnu/Desktop/2021214398_张颖/total/pose_feature",
         # openpose_exe=r"C:\Users\dengm\Desktop\openpose\bin\OpenPoseDemo.exe",
         num_processes=1  # 可以调整进程数
     )
