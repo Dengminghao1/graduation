@@ -3,6 +3,13 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
+        <entry key="C:\Users\dengm\Desktop\dataset\align_eeg_pose\aligned_eeg_pose_20231229125924_20231229130959.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="C:\Users\dengm\Desktop\dataset\align_face_eeg\aligned_face_eeg_20231229153000_20231229154000_unmatched.csv">
           <value>
             <Attribute>
@@ -11,6 +18,13 @@
           </value>
         </entry>
         <entry key="C:\Users\dengm\Desktop\dataset\align_face_eeg\aligned_face_eeg_20231229170014_20231229171014_unmatched.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\align_face_eeg\aligned_face_eeg_20231229171016_20231229172016.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -360,6 +374,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\output\2021214398_张颖.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\output\align_eeg_face.csv">
           <value>
             <Attribute>
@@ -403,6 +424,13 @@
           </value>
         </entry>
         <entry key="\output\merged_face_pose_eeg_feature_files.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\output\merged_face_pose_eeg_feature_files_new3.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

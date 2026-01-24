@@ -296,5 +296,5 @@ if __name__ == '__main__':
     #     parse_packet(data)
     # parse_packet(RAW_DATA_EXAMPLE[0])
     # 传入未计算的脑电文件，输出注意力高中低的文件（去除无效数据）
-    process_eeg_file(r"E:\数据\20231229 计算机网络考试数据汇总\第1组\脑电\2021214387_周婉婷.txt", r"D:\GraduationProject\demo1\output\2021214387_周婉婷.csv")
+    process_eeg_file(r"E:\数据\20231229 计算机网络考试数据汇总\第6组\脑电\2021214398_张颖.txt", r"D:\GraduationProject\demo1\output\2021214398_张颖.csv")
 

@@ -11,13 +11,13 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.tree import DecisionTreeClassifier
 
 # 读取数据
-df = pd.read_csv(r"D:\GraduationProject\demo1\output\merged_pose_eeg_feature_files.csv")
+df = pd.read_csv(r"C:\Users\dengm\Desktop\dataset\merged_face_pose_eeg_feature_files_new3.csv")
 # 删除包含空值的行
 df = df.dropna()
 # 去除列名中的空格，并选择从 gaze_0_x 到 p_33 之间的列
 df.columns = df.columns.str.strip()  # 去除列名首尾空格
 start_column = 'x0'
-end_column = 'y24'
+end_column = 'y18'
 
 if start_column in df.columns and end_column in df.columns:
     all_cols = df.columns.tolist()
@@ -76,11 +76,11 @@ X_test_scaled = scaler.transform(X_test)
 
 # 分类模型
 class_models = {
-    '逻辑回归': LogisticRegression(max_iter=10000, random_state=42),
-    '贝叶斯': GaussianNB() ,
+    # '逻辑回归': LogisticRegression(max_iter=10000, random_state=42),
+    # '贝叶斯': GaussianNB() ,
     '决策树': DecisionTreeClassifier(random_state=42),
     '随机森林': RandomForestClassifier(n_estimators=100, random_state=42),
-    'SVM': SVC(kernel='rbf', probability=True, random_state=42)
+    # 'SVM': SVC(kernel='rbf', probability=True, random_state=42)
 }
 
 class_results = {}

@@ -17,11 +17,15 @@ def process_single_video(args):
         cmd = [
             openpose_exe,
             '--video', video_path,
-            '--write_json', video_output_dir,
+            # '--write_json', video_output_dir,
+            '--write_images', video_output_dir,
             # '--write_video', os.path.join(video_output_dir, 'result.avi'),
             # '--write_video_fps', '30',
             '--display', '0',
-            '--render_pose', '0'
+            '--render_pose', '1',
+            '--disable_blending',
+            '--tracking', '1',  # 开启时序跟踪，减少关点跳变
+            '--number_people_max', '1',
         ]
 
         result = subprocess.run(cmd,

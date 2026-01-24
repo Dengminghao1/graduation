@@ -82,20 +82,37 @@ def process_single_video(video_path, output_dir, mtcnn, is_align=True, margin=20
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         boxes, probs, landmarks = mtcnn.detect(frame_rgb, landmarks=True)
 
-        if boxes is not None:
-            for i, (box, landmark) in enumerate(zip(boxes, landmarks)):
+        if boxes is not None and len(boxes) > 0:
+            # 遍历所有人脸检测结果，找出置信度最高的
+            best_face_idx = np.argmax(probs)
+            best_box = boxes[best_face_idx]
+            best_landmark = landmarks[best_face_idx]
+            best_prob = probs[best_face_idx]
 
-                target_img = get_aligned_face(frame, landmark) if is_align else frame
-                x1, y1, x2, y2 = box
+            if best_prob >= 0.95:
+                # 高质量人脸：裁剪并保存人脸区域
+                target_img = get_aligned_face(frame, best_landmark) if is_align else frame
+                x1, y1, x2, y2 = best_box
                 nx1, ny1 = max(0, int(x1 - margin)), max(0, int(y1 - margin))
                 nx2, ny2 = min(w_vid, int(x2 + margin)), min(h_vid, int(y2 + margin))
 
                 face = target_img[ny1:ny2, nx1:nx2]
                 if face.size > 0:
                     face_final = letterbox_resize(face, target_size=size)
-                    # 修正文件名：帧号_人脸序号_原视频名
-                    save_name = f"frame_{frame_idx:06d}_{video_path.stem}.jpg"
-                    cv2.imwrite(str(output_dir / save_name), face_final)
+                else:
+                    # 如果人脸区域无效，使用整帧
+                    face_final = letterbox_resize(frame, target_size=size)
+            else:
+                # 置信度不够但有人脸检测：使用整帧
+                face_final = letterbox_resize(frame, target_size=size)
+        else:
+            # 未检测到人脸：使用整帧
+            face_final = letterbox_resize(frame, target_size=size)
+
+        # 统一输出处理
+        save_name = f"frame_{frame_idx:06d}_{video_path.stem}.jpg"
+        cv2.imwrite(str(output_dir / save_name), face_final)
+
         frame_idx += 1
     cap.release()
 
@@ -106,7 +123,7 @@ def process_all_videos(input_dir, output_root, is_align=True, margin=20):
     output_path = Path(output_root)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cpu')
     mtcnn = MTCNN(keep_all=True, device=device)
 
     video_exts = ('.mp4', '.avi', '.mov', '.mkv')
@@ -123,8 +140,8 @@ def process_all_videos(input_dir, output_root, is_align=True, margin=20):
 
 if __name__ == "__main__":
     # 配置你的路径
-    INPUT_VIDEO_DIR = r'/home/ccnu/Desktop/2021214387_周婉婷/total'
-    OUTPUT_BASE_DIR = r'/home/ccnu/Desktop/2021214387_周婉婷/total/extracted_frames'
+    INPUT_VIDEO_DIR = r'C:\Users\dengm\Desktop\dataset\blur_video'
+    OUTPUT_BASE_DIR = r'C:\Users\dengm\Desktop\dataset\blur_video\extracted_frames'
 
     process_all_videos(
         input_dir=INPUT_VIDEO_DIR,

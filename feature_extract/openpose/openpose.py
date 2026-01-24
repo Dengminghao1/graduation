@@ -17,11 +17,12 @@ def process_single_video(args):
         cmd = [
             openpose_exe,
             '--video', video_path,
-            '--write_json', video_output_dir,
-            # '--write_video', os.path.join(video_output_dir, 'result.avi'),
-            # '--write_video_fps', '30',
-            '--display', '0',
-            '--render_pose', '0'
+            '--write_images', video_output_dir,  # 保存提取的姿态图片
+            '--render_pose', '1',  # 渲染姿态（1=开启）
+            '--display', '0',  # 关闭可视化窗口（0=关闭）
+            '--disable_blending',  # 禁用混合（无值参数，直接加）
+            '--tracking', '1',  # 开启人体跟踪（1=开启）
+            '--number_people_max', '1'  # 限制最大检测人数为1
         ]
 
         result = subprocess.run(cmd,
@@ -101,8 +102,8 @@ def batch_process_parallel(input_dir, output_base_dir="output", openpose_exe=r".
 # 使用示例
 if __name__ == "__main__":
     batch_process_parallel(
-        input_dir=r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total",
-        output_base_dir=r"E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\pose_feature",
+        input_dir=r"C:\Users\dengm\Desktop\dataset\blur_video\video_101",
+        output_base_dir=r"C:\Users\dengm\Desktop\dataset\blur_video\pose_101",
         openpose_exe=r"C:\Users\dengm\Desktop\openpose\bin\OpenPoseDemo.exe",
-        num_processes=5  # 可以调整进程数
+        num_processes=1  # 可以调整进程数
     )

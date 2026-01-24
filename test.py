@@ -75,15 +75,15 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         print(f"当前GPU: {torch.cuda.current_device()}")
         print(f"GPU名称: {torch.cuda.get_device_name()}")
-    result = count_video_frames(
-        input_dir=r"C:\Users\dengm\Desktop\dataset\blur_video"
-    )
-    sum =0
+    # result = count_video_frames(
+    #     input_dir=r"C:\Users\dengm\Desktop\dataset\blur_video"
+    # )
+    # sum =0
 
-    # 打印汇总
-    if result:
-        print("\n汇总结果:")
-        for name, frames in result.items():
-            sum += frames
-            print(f"  {name}: {frames} 帧")
-    print(sum)
+    # # 打印汇总
+    # if result:
+    #     print("\n汇总结果:")
+    #     for name, frames in result.items():
+    #         sum += frames
+    #         print(f"  {name}: {frames} 帧")
+    # print(sum)
