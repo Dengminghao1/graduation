@@ -87,7 +87,7 @@ model = model.to(device)
 
 # --- 5. 损失函数与优化器 ---
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=learning_rate,weight_decay=1e-4)
+optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 # 4. 增加学习率调整策略
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)
 # --- 6. 训练循环 ---
@@ -102,6 +102,8 @@ scaler = GradScaler()  # 4090 混合精度加速器
 
 print(f"开始训练... 设备: {device}")
 
+patience_counter = 0
+early_stop_patience = 10
 for epoch in range(num_epochs):
     # --- 1. 训练阶段 ---
     model.train()
@@ -164,12 +166,10 @@ for epoch in range(num_epochs):
           f'Val Loss: {epoch_val_loss:.4f} Acc: {epoch_val_acc:.4f}')
     # --- 建议增加：早停机制 (Early Stopping) ---
     # 防止后面 20 个 epoch 都在浪费电并加剧过拟合
-    patience_counter = 0
-    early_stop_patience = 10
     # --- 3. 保存最佳模型 (文件名不要 0.) ---
     if epoch_val_acc > best_val_acc:
         best_val_acc = epoch_val_acc
-
+        patience_counter = 0  # 重置计数器
         # 清除旧的 best 模型
         for old_file in glob.glob("best_model_acc_*.pth"):
             os.remove(old_file)
@@ -179,11 +179,14 @@ for epoch in range(num_epochs):
         save_path = f'best_model_acc_{acc_suffix}.pth'
         torch.save(model.state_dict(), save_path)
         print(f"🌟 发现更优模型: {save_path}")
+
     else:
         patience_counter += 1
+        print(f"⚠ 验证集表现未提升，早停计数器: {patience_counter}/{early_stop_patience}")
 
+    # 触发早停
     if patience_counter >= early_stop_patience:
-        print("Early stopping triggered!")
+        print("🛑 [Early Stopping] 验证集表现长期停滞，提前结束训练。")
         break
 # --- 4. 绘制并保存图像 ---
 plt.figure(figsize=(12, 5))

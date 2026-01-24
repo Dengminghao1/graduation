@@ -1,6 +1,7 @@
 import glob
 
 from matplotlib import pyplot as plt
+from sklearn.model_selection import train_test_split
 from torch import nn, optim, autocast
 from torch.cuda.amp import GradScaler
 import os
@@ -16,84 +17,47 @@ from tqdm import tqdm
 
 
 class MultiSegmentAttentionDataset(Dataset):
-    def __init__(self, img_dir, csv_path, seq_len=20, transform=None):
+    def __init__(self, img_dir, csv_path, seq_len=20, transform=None, segment_keys=None):
         self.img_dir = img_dir
         self.seq_len = seq_len
         self.transform = transform
+        self.label_map = {'低': 0, '稍低': 1, '中性': 2, '稍高': 3, '高': 4}
 
-        # 1. 加载标签
+        # 1. 先加载所有段
         self.label_df = pd.read_csv(csv_path)
         self.label_df['timestamp'] = pd.to_datetime(self.label_df['timestamp'])
-        self.label_map = {'低': 0,
-                          '稍低': 1,
-                          '中性': 2,
-                          '稍高': 3,
-                          '高': 4}
 
-        # 2. 解析文件并按“段”分组
-        # key: (start_time_str, end_time_str), value: list of file_info
         segments = defaultdict(list)
         all_files = [f for f in os.listdir(img_dir) if f.endswith('.jpg')]
-
-        for f in all_files:
-            parts = f.split('_')
-            # 帧序号: parts[1], 开始时间: parts[4], 结束时间: parts[5]
-            frame_idx = int(parts[1])
-            s_time_str, e_time_str = parts[4], parts[5].replace('.jpg', '')
-
-            start_dt = datetime.strptime(s_time_str, "%Y%m%d%H%M%S")
-            curr_dt = start_dt + timedelta(seconds=frame_idx * 0.1)  # 10 FPS
-
-            segments[(s_time_str, e_time_str)].append({
-                'filename': f,
-                'time': curr_dt,
-                'idx': frame_idx
-            })
-
-        # 3. 在每个段内构建连续序列
-        self.valid_sequences = []
-        all_files = [f for f in os.listdir(self.img_dir) if f.endswith('.jpg')]
-
         for f in all_files:
             parts = f.split('_')
             frame_idx = int(parts[1])
             s_time_str, e_time_str = parts[4], parts[5].replace('.jpg', '')
-
             start_dt = datetime.strptime(s_time_str, "%Y%m%d%H%M%S")
             curr_dt = start_dt + timedelta(seconds=frame_idx * 0.1)
+            segments[(s_time_str, e_time_str)].append({'filename': f, 'time': curr_dt, 'idx': frame_idx})
 
-            segments[(s_time_str, e_time_str)].append({
-                'filename': f,
-                'time': curr_dt,
-                'idx': frame_idx
-            })
+        # 2. 如果指定了 segment_keys，则只保留这些段的数据
+        if segment_keys is not None:
+            filtered_segments = {k: v for k, v in segments.items() if k in segment_keys}
+        else:
+            filtered_segments = segments
 
-        # 3. 每段内：严格按“1 秒 = 10 帧”构建样本
+        # 3. 构建序列 (逻辑同你之前的)
         self.valid_sequences = []
-        print("正在按秒匹配标签并构建序列...")
-
-        for seg_key in segments:
-            # 确保段内按帧序号排序
-            seg_files = sorted(segments[seg_key], key=lambda x: x['idx'])
-
-            # stride=10 意味着每一秒提取一个序列
-            # 如果想让数据更丰富，可以减小 stride；如果想减少冗余，stride 应等于 10
+        for seg_key, seg_files_list in filtered_segments.items():
+            seg_files = sorted(seg_files_list, key=lambda x: x['idx'])
             for i in range(0, len(seg_files) - seq_len, 10):
                 seq_frames = seg_files[i: i + seq_len]
                 end_frame_time = seq_frames[-1]['time']
-
-                # --- 优化匹配逻辑：寻找 1 秒内最准的那一刻 ---
                 time_diffs = (self.label_df['timestamp'] - end_frame_time).abs()
                 closest_idx = time_diffs.idxmin()
-                min_diff = time_diffs.min()
-
-                if min_diff <= timedelta(seconds=1):
+                if time_diffs.min() <= timedelta(seconds=1):
                     label_str = self.label_df.loc[closest_idx, 'attention']
                     self.valid_sequences.append({
                         'files': [x['filename'] for x in seq_frames],
                         'label': self.label_map.get(label_str, 2)
                     })
-        print(f"成功创建序列总数: {len(self.valid_sequences)}")
 
     def __len__(self):
         return len(self.valid_sequences)
@@ -115,61 +79,48 @@ class MultiSegmentAttentionDataset(Dataset):
 class ResNet50LSTM(nn.Module):
     def __init__(self, num_classes=5, hidden_size=512, num_lstm_layers=2):
         super(ResNet50LSTM, self).__init__()
-
-        # 加载预训练的 ResNet50
-        # 使用新的 weights API
         weights = models.ResNet50_Weights.IMAGENET1K_V1
         resnet = models.resnet50(weights=weights)
 
-        # 重要：ResNet50 在全连接层之前的输出维度是 2048
-        self.resnet_out_dim = resnet.fc.in_features  # 2048
-
-        # 去掉 ResNet 最后的全连接分类层
+        self.resnet_out_dim = resnet.fc.in_features
         self.feature_extractor = nn.Sequential(*list(resnet.children())[:-1])
 
-        # 定义 LSTM
+        # 新增：特征标准化层，防止 CNN 输出范围波动过大
+        self.bn = nn.BatchNorm1d(self.resnet_out_dim)
+
         self.lstm = nn.LSTM(
-            input_size=self.resnet_out_dim,  # 输入维度必须是 2048
+            input_size=self.resnet_out_dim,
             hidden_size=hidden_size,
             num_layers=num_lstm_layers,
             batch_first=True,
-            dropout=0.3  # 防止过拟合
+            dropout=0.4  # 增加 Dropout
         )
 
-        # 定义最终的分类器
         self.classifier = nn.Sequential(
             nn.Linear(hidden_size, 256),
             nn.ReLU(),
-            nn.Dropout(0.4),
+            nn.Dropout(0.5),
             nn.Linear(256, num_classes)
         )
 
     def forward(self, x):
-        # 输入 x 形状: (Batch_Size, Seq_Len, C, H, W)
         b, s, c, h, w = x.shape
-
-        # 1. CNN 特征提取
-        # 将 Batch 和 Seq 维度合并，以便并行处理所有图片
         x_flat = x.view(b * s, c, h, w)
+        features = self.feature_extractor(x_flat)  # (B*S, 2048, 1, 1)
 
-        # 注意：这里没有使用 torch.no_grad()，因为 4090 支持全量微调
-        features = self.feature_extractor(x_flat)
-        # features 形状: (B*S, 2048, 1, 1)
+        # 展平并标准化
+        features = features.view(b * s, -1)
+        features = self.bn(features)
 
-        # 展平并恢复时序维度
-        features = features.view(b, s, -1)  # 形状: (B, S, 2048)
+        # 恢复时序维度
+        features = features.view(b, s, -1)
 
-        # 2. LSTM 时序建模
-        self.lstm.flatten_parameters()  # 优化显存
+        self.lstm.flatten_parameters()
         lstm_out, _ = self.lstm(features)
-        # lstm_out 形状: (B, S, hidden_size)
 
-        # 3. 分类
-        # 我们只取最后一个时间步的输出作为整个序列的预测结果
+        # 取最后一个时间步
         last_timestep_out = lstm_out[:, -1, :]
-        logits = self.classifier(last_timestep_out)
-
-        return logits
+        return self.classifier(last_timestep_out)
 
 
 # ===========================
@@ -204,22 +155,30 @@ if __name__ == '__main__':
     # --- 1. 数据集切分与加载 ---
     # 假设你的 MultiSegmentAttentionDataset 类已经在上方定义好
     print("正在初始化数据集...")
-    full_dataset = MultiSegmentAttentionDataset(img_dir=IMG_DIR, csv_path=CSV_PATH, seq_len=SEQ_LEN,
-                                                transform=transform)
+    # 1. 首先解析出所有的段 key
+    all_files = [f for f in os.listdir(IMG_DIR) if f.endswith('.jpg')]
+    temp_segments = set()
+    for f in all_files:
+        parts = f.split('_')
+        temp_segments.add((parts[4], parts[5].replace('.jpg', '')))
+    all_keys = list(temp_segments)
 
-    # 按照 8:2 切分训练集和验证集
-    # 注意：对于视频，更好的方式是按视频文件切分，这里先使用随机切分索引
-    train_size = int(0.8 * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+    # 2. 按“段”划分训练和验证（确保验证集是全新的视频段）
+    train_keys, val_keys = train_test_split(all_keys, test_size=0.2, random_state=42)
 
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=8, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=8, pin_memory=True)
+    # 3. 实例化两个独立的 Dataset
+    train_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_PATH, SEQ_LEN, transform, segment_keys=train_keys)
+    val_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_PATH, SEQ_LEN, transform, segment_keys=val_keys)
+
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
 
     # --- 2. 模型初始化 ---
     model = ResNet50LSTM(num_classes=NUM_CLASSES).to(DEVICE)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
+    # --- 在初始化优化器后添加 ---
+    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-2)  # AdamW 配合 weight_decay 效果更好
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
     scaler = GradScaler()
 
     # 用于绘图的列表
@@ -231,6 +190,8 @@ if __name__ == '__main__':
     best_val_acc = 0.0
     print(f"开始训练... 训练样本: {len(train_dataset)}, 验证样本: {len(val_dataset)}")
 
+    patience_counter = 0
+    early_stop_patience = 10
     # --- 3. 训练循环 ---
     for epoch in range(NUM_EPOCHS):
         # --- 1. 训练阶段 (Training Phase) ---
@@ -289,6 +250,7 @@ if __name__ == '__main__':
 
         avg_val_loss = val_loss / len(val_dataset)
         avg_val_acc = val_correct / val_total
+        scheduler.step(avg_val_loss)  # 自动调整学习率
 
         # --- 3. 结果记录与保存 ---
         history['train_loss'].append(avg_train_loss)
@@ -303,6 +265,7 @@ if __name__ == '__main__':
 
         if avg_val_acc > best_val_acc:
             best_val_acc = avg_val_acc
+            patience_counter = 0  # 重置计数器
             for old_file in glob.glob("best_model_acc_*.pth"):
                 os.remove(old_file)
 
@@ -310,6 +273,14 @@ if __name__ == '__main__':
             save_path = f'best_model_acc_{acc_suffix}.pth'
             torch.save(model.state_dict(), save_path)
             print(f"🌟 发现更优模型: {save_path}")
+        else:
+            patience_counter += 1
+            print(f"⚠ 验证集表现未提升，早停计数器: {patience_counter}/{early_stop_patience}")
+
+            # 触发早停
+        if patience_counter >= early_stop_patience:
+            print("🛑 [Early Stopping] 验证集表现长期停滞，提前结束训练。")
+            break
 
     # --- 4. 绘制结果图像 ---
     plt.figure(figsize=(12, 5))
