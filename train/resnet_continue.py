@@ -11,7 +11,6 @@ import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from train.resnet_face import criterion
 
 # 配置与之前保持一致
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
@@ -63,9 +62,9 @@ class ApplyTransform(torch.utils.data.Dataset):
 
 
 train_loader = DataLoader(ApplyTransform(Subset(full_dataset, train_idx), data_transforms['train']),
-                          batch_size=batch_size, shuffle=True, num_workers=4)
+                          batch_size=batch_size, shuffle=True, num_workers=2)
 val_loader = DataLoader(ApplyTransform(Subset(full_dataset, val_idx), data_transforms['val']),
-                        batch_size=batch_size, shuffle=False, num_workers=4)
+                        batch_size=batch_size, shuffle=False, num_workers=2)
 
 # 2. 构建模型并加载权重
 model = models.resnet50(weights=None)  # 续训不需要重复下载 ImageNet 权重
@@ -82,6 +81,7 @@ else:
 model = model.to(device)
 
 # 3. 优化器与调度器
+criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)
 scaler = GradScaler()
@@ -99,7 +99,7 @@ for epoch in range(START_EPOCH, START_EPOCH + num_epochs):
     corrects = 0
     total_train = 0
 
-    for inputs, labels in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
+    for inputs, labels in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{START_EPOCH + num_epochs} [Train]"):
         inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
 
@@ -129,7 +129,7 @@ for epoch in range(START_EPOCH, START_EPOCH + num_epochs):
     total_val = 0
 
     with torch.no_grad():
-        for inputs, labels in tqdm(val_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Val]"):
+        for inputs, labels in tqdm(val_loader, desc=f"Epoch {epoch + 1}/{START_EPOCH + num_epochs} [Val]"):
             inputs, labels = inputs.to(device), labels.to(device)
 
             with autocast(device_type='cuda'):

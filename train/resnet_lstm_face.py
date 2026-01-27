@@ -15,49 +15,86 @@ from collections import defaultdict
 
 from tqdm import tqdm
 
-
+# 用第二块显卡训练
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 class MultiSegmentAttentionDataset(Dataset):
-    def __init__(self, img_dir, csv_path, seq_len=20, transform=None, segment_keys=None):
+    def __init__(self, img_dir, csv_dir, seq_len=20, transform=None, segment_keys=None):
         self.img_dir = img_dir
         self.seq_len = seq_len
         self.transform = transform
         self.label_map = {'低': 0, '稍低': 1, '中性': 2, '稍高': 3, '高': 4}
 
-        # 1. 先加载所有段
-        self.label_df = pd.read_csv(csv_path)
-        self.label_df['timestamp'] = pd.to_datetime(self.label_df['timestamp'])
+        # 1. 扫描并加载 CSV 标签库
+        # key: (start_time_str, end_time_str), value: DataFrame
+        self.label_dfs = {}
+        csv_files = [f for f in os.listdir(csv_dir) if f.endswith('.csv')]
+        print(f"正在加载 {len(csv_files)} 个标签文件...")
 
+        for cf in csv_files:
+            # 假设 CSV 文件名格式: xxxx_xxxx_20231229153000_20231229154000.csv
+            parts = cf.replace('.csv', '').split('_')
+            # 根据你的文件名规则，倒数第二和倒数第一通常是时间
+            s_str, e_str = parts[-2], parts[-1]
+
+            df = pd.read_csv(os.path.join(csv_dir, cf))
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            self.label_dfs[(s_str, e_str)] = df
+
+        # 2. 解析图像文件并按时间段分组
         segments = defaultdict(list)
         all_files = [f for f in os.listdir(img_dir) if f.endswith('.jpg')]
         for f in all_files:
             parts = f.split('_')
+            # 假设图像文件名: xxxx_frameidx_xxxx_xxxx_开始时间_结束时间.jpg
+            # 请根据实际情况确认 parts 的索引
             frame_idx = int(parts[1])
-            s_time_str, e_time_str = parts[4], parts[5].replace('.jpg', '')
+            s_time_str = parts[4]
+            e_time_str = parts[5].replace('.jpg', '')
+
             start_dt = datetime.strptime(s_time_str, "%Y%m%d%H%M%S")
             curr_dt = start_dt + timedelta(seconds=frame_idx * 0.1)
-            segments[(s_time_str, e_time_str)].append({'filename': f, 'time': curr_dt, 'idx': frame_idx})
 
-        # 2. 如果指定了 segment_keys，则只保留这些段的数据
+            segments[(s_time_str, e_time_str)].append({
+                'filename': f,
+                'time': curr_dt,
+                'idx': frame_idx
+            })
+
+        # 3. 如果指定了 segment_keys，则只保留这些段的数据
         if segment_keys is not None:
             filtered_segments = {k: v for k, v in segments.items() if k in segment_keys}
         else:
             filtered_segments = segments
 
-        # 3. 构建序列 (逻辑同你之前的)
+        # 4. 构建序列并从“对应”的 DataFrame 中取标签
         self.valid_sequences = []
+        print("开始时序匹配标签...")
+
         for seg_key, seg_files_list in filtered_segments.items():
+            # 检查是否有对应的 CSV 标签
+            if seg_key not in self.label_dfs:
+                print(f"⚠ 警告: 未找到段 {seg_key} 对应的 CSV 标签，跳过...")
+                continue
+
+            current_df = self.label_dfs[seg_key]
             seg_files = sorted(seg_files_list, key=lambda x: x['idx'])
+
             for i in range(0, len(seg_files) - seq_len, 10):
                 seq_frames = seg_files[i: i + seq_len]
                 end_frame_time = seq_frames[-1]['time']
-                time_diffs = (self.label_df['timestamp'] - end_frame_time).abs()
+
+                # 在当前段所属的 DataFrame 中找最接近的时间点
+                time_diffs = (current_df['timestamp'] - end_frame_time).abs()
                 closest_idx = time_diffs.idxmin()
+
                 if time_diffs.min() <= timedelta(seconds=1):
-                    label_str = self.label_df.loc[closest_idx, 'attention']
+                    label_str = current_df.loc[closest_idx, 'attention']
                     self.valid_sequences.append({
                         'files': [x['filename'] for x in seq_frames],
                         'label': self.label_map.get(label_str, 2)
                     })
+
+        print(f"成功构建序列总数: {len(self.valid_sequences)}")
 
     def __len__(self):
         return len(self.valid_sequences)
@@ -129,10 +166,10 @@ class ResNet50LSTM(nn.Module):
 if __name__ == '__main__':
     # --- 配置 ---
     # r"/home/ccnu/Desktop/2021214387_周婉婷/total/classified_frames"
-    IMG_DIR = r'E:\数据\20231229 计算机网络考试数据汇总\第1组\视频\2021214387_周婉婷\total\extracted_frames'  # <-- 修改这里
-    CSV_PATH = r'D:\GraduationProject\demo1\output\2021214387_周婉婷.csv'  # <-- 修改这里
-    # IMG_DIR = r'/home/ccnu/Desktop/2021214387_周婉婷/total/extracted_frames'  # <-- 修改这里
-    # CSV_PATH = r'/home/ccnu/Desktop/2021214387_周婉婷/total/2021214387_周婉婷.csv'  # <-- 修改这里
+    IMG_DIR = r'/home/ccnu/Desktop/dataset/classified_frames_face_by_label_all'  # <-- 修改这里
+    CSV_DIR = r'/home/ccnu/Desktop/dataset/eeg_csv'  # <-- 修改这里
+    # IMG_DIR = r'/home/ccnu/Desktop/dataset/classified_frames_face_by_label_all'  # <-- 修改这里
+    # CSV_DIR = r'/home/ccnu/Desktop/dataset/eeg_csv'  # <-- 修改这里
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {DEVICE}")
@@ -167,8 +204,8 @@ if __name__ == '__main__':
     train_keys, val_keys = train_test_split(all_keys, test_size=0.2, random_state=42)
 
     # 3. 实例化两个独立的 Dataset
-    train_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_PATH, SEQ_LEN, transform, segment_keys=train_keys)
-    val_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_PATH, SEQ_LEN, transform, segment_keys=val_keys)
+    train_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_DIR, SEQ_LEN, transform, segment_keys=train_keys)
+    val_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_DIR, SEQ_LEN, transform, segment_keys=val_keys)
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)

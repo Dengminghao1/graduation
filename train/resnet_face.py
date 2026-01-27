@@ -15,9 +15,9 @@ import matplotlib.pyplot as plt
 # 用第二块显卡训练
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # --- 1. 配置参数 ---
-data_dir = r"/home/ccnu/Desktop/dataset/classified_frames_by_label_all"  # 你之前分类好的根目录
+data_dir = r"/home/ccnu/Desktop/dataset/classified_frames_face_by_label_all"  # 你之前分类好的根目录
 batch_size = 256
-num_epochs = 50
+num_epochs = 100
 learning_rate = 0.0001
 num_classes = 5  # 低, 稍低, 中性, 稍高, 高
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
