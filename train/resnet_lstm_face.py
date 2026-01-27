@@ -1,5 +1,4 @@
 import glob
-
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from torch import nn, optim, autocast
@@ -12,7 +11,6 @@ from torchvision import transforms, models
 from PIL import Image
 from datetime import datetime, timedelta
 from collections import defaultdict
-
 from tqdm import tqdm
 
 # 用第二块显卡训练
@@ -165,10 +163,9 @@ class ResNet50LSTM(nn.Module):
 # ===========================
 if __name__ == '__main__':
     # --- 配置 ---
-    # r"/home/ccnu/Desktop/2021214387_周婉婷/total/classified_frames"
-    IMG_DIR = r'/home/ccnu/Desktop/dataset/classified_frames_face_by_label_all'  # <-- 修改这里
+    IMG_DIR = r'/home/ccnu/Desktop/dataset/frames_face_all'  # <-- 修改这里
     CSV_DIR = r'/home/ccnu/Desktop/dataset/eeg_csv'  # <-- 修改这里
-    # IMG_DIR = r'/home/ccnu/Desktop/dataset/classified_frames_face_by_label_all'  # <-- 修改这里
+    # IMG_DIR = r'/home/ccnu/Desktop/dataset/frames_face_all'  # <-- 修改这里
     # CSV_DIR = r'/home/ccnu/Desktop/dataset/eeg_csv'  # <-- 修改这里
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -215,7 +212,7 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     # --- 在初始化优化器后添加 ---
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-2)  # AdamW 配合 weight_decay 效果更好
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3)
     scaler = GradScaler()
 
     # 用于绘图的列表
@@ -288,7 +285,10 @@ if __name__ == '__main__':
         avg_val_loss = val_loss / len(val_dataset)
         avg_val_acc = val_correct / val_total
         scheduler.step(avg_val_loss)  # 自动调整学习率
-
+        # 在训练循环中，在 scheduler.step() 后添加
+        if epoch % 1 == 0:  # 每隔一定epoch输出一次
+            current_lr = optimizer.param_groups[0]['lr']
+            print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}] - Learning Rate: {current_lr:.2e}")
         # --- 3. 结果记录与保存 ---
         history['train_loss'].append(avg_train_loss)
         history['train_acc'].append(avg_train_acc)
@@ -303,8 +303,8 @@ if __name__ == '__main__':
         if avg_val_acc > best_val_acc:
             best_val_acc = avg_val_acc
             patience_counter = 0  # 重置计数器
-            for old_file in glob.glob("best_model_acc_*.pth"):
-                os.remove(old_file)
+            # for old_file in glob.glob("best_model_acc_*.pth"):
+            #     os.remove(old_file)
 
             acc_suffix = int(best_val_acc * 10000)
             save_path = f'best_model_acc_{acc_suffix}.pth'

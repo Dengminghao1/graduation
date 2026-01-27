@@ -191,8 +191,8 @@ for epoch in range(num_epochs):
         best_val_acc = epoch_val_acc
         patience_counter = 0  # 重置计数器
         # 清除旧的 best 模型
-        for old_file in glob.glob("best_model_acc_*.pth"):
-            os.remove(old_file)
+        # for old_file in glob.glob("best_model_acc_*.pth"):
+            # os.remove(old_file)
 
         # 转换准确率为整数，如 0.9542 -> 9542
         acc_suffix = int(best_val_acc * 10000)
