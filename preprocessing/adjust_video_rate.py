@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from moviepy.editor import VideoFileClip
+from PIL import Image
 
 # ================= 配置区域 =================
 # 请修改为你的视频所在目录
@@ -510,7 +511,92 @@ def delete_images_by_pattern(folder_path, pattern, preview=True):
 
     print("-" * 80)
     print(f"\n📊 统计: 共找到 {len(files_to_delete)} 个匹配文件")
-    print("👀 预览结束（文件未删除）" if preview else "✅ 删除完成！")
+    print(f"👀 预览结束（文件未删除）" if preview else "✅ 删除完成！")
+
+
+def resize_images_to_224x224(input_folder, output_folder=None, overwrite=False):
+    """
+    将文件夹中的所有图片调整为 224x224 尺寸
+
+    Args:
+        input_folder: 输入图片文件夹路径
+        output_folder: 输出文件夹路径（默认在输入文件夹同级创建 resize_224x224 文件夹）
+        overwrite: 是否覆盖输出文件夹中的现有文件
+
+    Returns:
+        打印处理结果
+    """
+    input_folder = Path(input_folder)
+    
+    if not input_folder.exists():
+        print(f"❌ 输入文件夹不存在: {input_folder}")
+        return
+    
+    # 设置输出文件夹
+    if output_folder is None:
+        output_folder = input_folder.parent / f"{input_folder.name}_resize_224x224"
+    else:
+        output_folder = Path(output_folder)
+    
+    # 创建输出文件夹
+    if output_folder.exists():
+        if not overwrite:
+            print(f"⚠️ 输出文件夹已存在: {output_folder}")
+            print("   使用 overwrite=True 可覆盖现有文件")
+            return
+    else:
+        output_folder.mkdir(parents=True, exist_ok=True)
+        print(f"✅ 已创建输出文件夹: {output_folder}")
+    
+    # 获取所有图片文件
+    image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.gif']
+    image_files = []
+    
+    for ext in image_extensions:
+        image_files.extend(input_folder.glob(f"*{ext.lower()}"))
+        image_files.extend(input_folder.glob(f"*{ext.upper()}"))
+    
+    if not image_files:
+        print(f"⚠️ 输入文件夹中没有找到图片文件")
+        return
+    
+    print(f"📁 找到 {len(image_files)} 个图片文件，开始调整尺寸...\n")
+    
+    success_count = 0
+    fail_count = 0
+    
+    for img_path in image_files:
+        try:
+            # 打开图片
+            img = Image.open(img_path)
+            
+            # 调整尺寸为 224x224
+            resized_img = img.resize((224, 224), Image.LANCZOS)
+            
+            # 构建输出路径
+            output_path = output_folder / img_path.name
+            
+            # 保存调整后的图片
+            resized_img.save(output_path)
+            
+            # 关闭图片
+            img.close()
+            resized_img.close()
+            
+            print(f"✅ 完成: {img_path.name}")
+            success_count += 1
+            
+        except Exception as e:
+            print(f"❌ 失败: {img_path.name}, 错误: {e}")
+            fail_count += 1
+    
+    print(f"\n{'=' * 50}")
+    print(f"处理完成！")
+    print(f"✅ 成功: {success_count} 个")
+    print(f"⚠️ 失败: {fail_count} 个")
+    print(f"📂 输出位置: {output_folder}")
+    print(f"{'=' * 50}")
+
 
 if __name__ == '__main__':
 
@@ -542,9 +628,13 @@ if __name__ == '__main__':
     #
     # # 执行检查
     # check_frame_sequence(image_folder)
-    image_folder = r"D:\A_from_ubuntu\extracted_frames_all\extracted_frames"  # 你的图片文件夹
-    target_pattern = "192.168.0.124_01_20231229160026_20231229160416"  # 要删除的名字片段
-
-    # 第一步：预览（强烈建议先运行这一步）
-    print("===== 第一步：预览操作 =====")
-    delete_images_by_pattern(image_folder, target_pattern, preview=False)
+    # # 示例：调整图片尺寸为 224x224
+    # input_folder = r"D:\Pycharm_Projects\demo1_trae\input_images"  # 你的图片文件夹路径
+    # output_folder = r"D:\Pycharm_Projects\demo1_trae\output_images_224x224"  # 输出文件夹路径（可选）
+    # 
+    # 执行调整尺寸
+    resize_images_to_224x224(
+        input_folder=input_folder,
+        output_folder=output_folder,  # 可选，默认在输入文件夹同级创建 resize_224x224 文件夹
+        overwrite=False  # 是否覆盖现有文件
+    )
