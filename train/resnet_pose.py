@@ -16,10 +16,10 @@ import matplotlib.pyplot as plt
 # 用第二块显卡训练
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # --- 1. 配置参数 ---
-data_dir = r"/home/ccnu/Desktop/dataset/classified_frames_face_by_label_all"  # 你之前分类好的根目录
+data_dir = r"/home/ccnu/Desktop/dataset/classified_frames_pose_by_label_all"  # 你之前分类好的根目录
 batch_size = 256
 num_epochs = 100
-learning_rate = 0.001
+learning_rate = 0.0001  # 与resnet_face.py保持一致
 num_classes = 5  # 低, 稍低, 中性, 稍高, 高
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -27,24 +27,22 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # ResNet 标准输入是 224x224
 data_transforms = {
     'train': transforms.Compose([
-        transforms.Resize(224),
-        transforms.RandomHorizontalFlip(p=0.5),  # 如果左右无语义
-        transforms.RandomRotation(5),
+        transforms.RandomResizedCrop(224),  # 与resnet_face.py保持一致
+        transforms.RandomHorizontalFlip(),  # 与resnet_face.py保持一致
+        transforms.RandomRotation(5),  # 适合pose数据
         transforms.RandomAffine(
             degrees=0,
             translate=(0.03, 0.03),
             scale=(0.98, 1.02)
         ),
-
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5],
+        transforms.Normalize(mean=[0.5, 0.5, 0.5],  # 适合pose数据（黑色背景）
                              std=[0.5, 0.5, 0.5])
     ]),
     'val': transforms.Compose([
-        transforms.Resize(224),
-
+        transforms.Resize((224, 224)),  # 与resnet_face.py保持一致
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5],
+        transforms.Normalize(mean=[0.5, 0.5, 0.5],  # 适合pose数据（黑色背景）
                              std=[0.5, 0.5, 0.5])
     ]),
 }
@@ -79,17 +77,14 @@ class ApplyTransform(torch.utils.data.Dataset):
 
 
 train_loader = DataLoader(ApplyTransform(Subset(full_dataset, train_idx), data_transforms['train']),
-                          batch_size=batch_size, shuffle=True, num_workers=2)
+                          batch_size=batch_size, shuffle=True, num_workers=4)  # 与resnet_face.py保持一致
 val_loader = DataLoader(ApplyTransform(Subset(full_dataset, val_idx), data_transforms['val']),
-                        batch_size=batch_size, shuffle=False, num_workers=2)
+                        batch_size=batch_size, shuffle=False, num_workers=4)  # 与resnet_face.py保持一致
 
 # --- 4. 构建 ResNet 模型 ---
 print(f"正在加载预训练 ResNet50 并运行在: {device}")
 model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-# 冻结 backbone（只训练 fc）
-for name, param in model.named_parameters():
-    if not name.startswith("fc"):
-        param.requires_grad = False
+
 # 修改最后的全连接层以匹配你的 5 分类
 num_ftrs = model.fc.in_features
 model.fc = nn.Sequential(
@@ -100,15 +95,9 @@ model = model.to(device)
 
 # --- 5. 损失函数与优化器 ---
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),lr=learning_rate )
+optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)  # 与resnet_face.py保持一致
 # 4. 增加学习率调整策略
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer,
-    mode='min',
-    patience=5,
-    factor=0.1,
-    min_lr=1e-6
-)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)  # 与resnet_face.py保持一致
 
 # --- 6. 训练循环 ---
 # 初始化用于记录绘图数据的字典
@@ -123,7 +112,7 @@ scaler = GradScaler()  # 4090 混合精度加速器
 print(f"开始训练... 设备: {device}")
 
 patience_counter = 0
-early_stop_patience = 15
+early_stop_patience = 10  # 与resnet_face.py保持一致
 for epoch in range(num_epochs):
     # --- 1. 训练阶段 ---
     model.train()

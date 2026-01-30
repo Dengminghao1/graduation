@@ -77,7 +77,7 @@ class MultiSegmentAttentionDataset(Dataset):
             current_df = self.label_dfs[seg_key]
             seg_files = sorted(seg_files_list, key=lambda x: x['idx'])
 
-            for i in range(0, len(seg_files) - seq_len, 10):
+            for i in range(0, len(seg_files) - seq_len):
                 seq_frames = seg_files[i: i + seq_len]
                 end_frame_time = seq_frames[-1]['time']
 
@@ -128,7 +128,7 @@ class ResNet50LSTM(nn.Module):
             hidden_size=hidden_size,
             num_layers=num_lstm_layers,
             batch_first=True,
-            dropout=0.4  # 增加 Dropout
+            dropout=0.5  # 增加 Dropout
         )
 
         self.classifier = nn.Sequential(
@@ -172,19 +172,27 @@ if __name__ == '__main__':
     print(f"Using device: {DEVICE}")
 
     # 针对 4090 的超参数设置
-    BATCH_SIZE = 24  # 24G 显存可以尝试 24 或 32
+    BATCH_SIZE = 32  # 增加批量大小以提高泛化能力
     SEQ_LEN = 10  # 输入 1 秒的视频 (10fps * 3s)
-    NUM_EPOCHS = 15
-    LEARNING_RATE = 3e-5  # 微调时学习率要小
+    NUM_EPOCHS = 50  # 增加训练轮数
+    LEARNING_RATE = 1e-5  # 更小的初始学习率
     NUM_CLASSES = 5
 
     # 图像预处理
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        # ImageNet 标准化
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+    data_transforms = {
+        'train': transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(0.2, 0.2, 0.2),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ]),
+        'val': transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ]),
+    }
 
     # --- 1. 数据集切分与加载 ---
     # 假设你的 MultiSegmentAttentionDataset 类已经在上方定义好
@@ -201,18 +209,19 @@ if __name__ == '__main__':
     train_keys, val_keys = train_test_split(all_keys, test_size=0.2, random_state=42)
 
     # 3. 实例化两个独立的 Dataset
-    train_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_DIR, SEQ_LEN, transform, segment_keys=train_keys)
-    val_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_DIR, SEQ_LEN, transform, segment_keys=val_keys)
+    train_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_DIR, SEQ_LEN, data_transforms['train'], segment_keys=train_keys)
+    val_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_DIR, SEQ_LEN, data_transforms['val'], segment_keys=val_keys)
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
 
     # --- 2. 模型初始化 ---
     model = ResNet50LSTM(num_classes=NUM_CLASSES).to(DEVICE)
+    # 与resnet_face.py保持一致
     criterion = nn.CrossEntropyLoss()
     # --- 在初始化优化器后添加 ---
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-2)  # AdamW 配合 weight_decay 效果更好
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)  # 与resnet_face.py保持一致
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)  # 与resnet_face.py保持一致
     scaler = GradScaler()
 
     # 用于绘图的列表
@@ -233,7 +242,7 @@ if __name__ == '__main__':
         train_loss, train_correct, train_total = 0.0, 0, 0
 
         # 使用 tqdm 包装 train_loader
-        train_bar = tqdm(train_loader, desc=f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Train")
+        train_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS} [Train]")
 
         for inputs, labels in train_bar:
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
@@ -265,7 +274,7 @@ if __name__ == '__main__':
         val_loss, val_correct, val_total = 0.0, 0, 0
 
         # 验证集也建议加上进度条，尤其当验证集较大时
-        val_bar = tqdm(val_loader, desc=f"Epoch [{epoch + 1}/{NUM_EPOCHS}] Val")
+        val_bar = tqdm(val_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS} [Val]")
 
         with torch.no_grad():
             for inputs, labels in val_bar:
@@ -341,7 +350,7 @@ if __name__ == '__main__':
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig('training_results.png')
+    plt.savefig('training_results_lstm.png')
     plt.show()
 
     print(f"训练结束! 最佳验证集准确率: {best_val_acc:.4f}")
