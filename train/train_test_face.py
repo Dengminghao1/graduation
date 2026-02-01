@@ -21,7 +21,7 @@ df.columns = df.columns.str.strip()  # 去除列名首尾空格
 # pose_Tx pose_Rz
 # x_0 y_67 X_0 Z_67
 # p_scale p_rx p_ty p_0 p_33
-start_column = 'gaze_0_x'
+start_column = 'x0'
 end_column = 'y18'
 
 if start_column in df.columns and end_column in df.columns:
@@ -52,10 +52,20 @@ matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 #                 ha='center', va='bottom', fontsize=10)
 # plt.tight_layout()
 # plt.show()
+#
+# # 分离特征和目标
+# X = df[feature_columns]
+# y = df[target_column]
 
-# 分离特征和目标
-X = df[feature_columns]
-y = df[target_column]
+# 每十行取中间一行（第5行）
+sampled_indices = []
+for i in range(0, len(df), 10):
+    middle_idx = i + 4  # 每组的第5行（0-based索引）
+    if middle_idx < len(df):
+        sampled_indices.append(middle_idx)
+
+X = df[feature_columns].iloc[sampled_indices]
+y = df[target_column].iloc[sampled_indices]
 label_mapping={
     '低':0,
     '稍低':1,

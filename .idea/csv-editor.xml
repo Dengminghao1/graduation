@@ -38,7 +38,21 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="C:\Users\dengm\Desktop\dataset\merged_face_pose_eeg_feature_files_new3_filled.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="D:\dataset\2021214398_张颖.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="D:\dataset\eeg_csv\2021214387_周婉婷_20231229163010_20231229164010.csv">
           <value>
             <Attribute>
               <option name="separator" value=":" />

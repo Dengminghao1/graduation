@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 # 用第二块显卡训练
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # --- 1. 配置参数 ---
-data_dir = r"/home/ccnu/Desktop/dataset/classified_frames_face_by_label_all"  # 你之前分类好的根目录
+data_dir = r"D:\dataset\frame_picture\classified_frames_face_101"  # 你之前分类好的根目录
 batch_size = 256
 num_epochs = 100
 learning_rate = 0.0001
@@ -61,7 +61,7 @@ class TimeIntervalDataset(torch.utils.data.Dataset):
                 if filename.endswith('.jpg'):
                     # 提取时间区间：frame_000000_192.168.0.101_01_20231229153000_20231229154000.jpg
                     parts = filename.split('_')
-                    if len(parts) >= 8:
+                    if len(parts) >= 5:
                         interval = f"{parts[-2]}_{parts[-1].split('.')[0]}"
                         if interval not in interval_groups:
                             interval_groups[interval] = []
@@ -82,6 +82,9 @@ class TimeIntervalDataset(torch.utils.data.Dataset):
                         img_path = os.path.join(class_path, selected_file)
                         self.samples.append(img_path)
                         self.targets.append(class_to_idx[class_name])
+    
+    def __len__(self):
+        return len(self.samples)
 
 # 创建数据集实例
 

@@ -59,53 +59,216 @@ data_transforms = {
     ]),
 }
 
-# --- 3. 自定义数据集加载器 --- 
+# --- 3. 自定义数据集类 --- 
+# 自定义数据集类，支持按时间区间分组选择一帧
+class TimeIntervalDataset(torch.utils.data.Dataset):
+    def __init__(self, data_dir):
+        self.data_dir = data_dir
+        self.samples = []
+        self.targets = []
+        
+        # 遍历所有类别文件夹
+        class_to_idx = {}
+        for i, class_name in enumerate(sorted(os.listdir(data_dir))):
+            class_to_idx[class_name] = i
+            class_path = os.path.join(data_dir, class_name)
+            if not os.path.isdir(class_path):
+                continue
+            
+            # 按时间区间分组文件
+            interval_groups = {}
+            for filename in os.listdir(class_path):
+                if filename.endswith('.jpg') or filename.endswith('.png'):
+                    # 提取时间区间：frame_000000_192.168.0.101_01_20231229153000_20231229154000.jpg 或 192.168.0.101_01_20231229153000_20231229154000_000000002190_rendered.png
+                    parts = filename.split('_')
+                    if len(parts) >= 5:
+                        # 处理不同格式的文件名
+                        if filename.endswith('.jpg'):
+                            # 面部格式：frame_000000_192.168.0.101_01_20231229153000_20231229154000.jpg
+                            interval = f"{parts[-2]}_{parts[-1].split('.')[0]}"
+                        else:
+                            # 肢体格式：192.168.0.101_01_20231229153000_20231229154000_000000002190_rendered.png
+                            # 找到时间区间部分（倒数第4和倒数第3部分）
+                            if len(parts) >= 6:
+                                interval = f"{parts[-4]}_{parts[-3]}"
+                            else:
+                                continue
+                        if interval not in interval_groups:
+                            interval_groups[interval] = []
+                        interval_groups[interval].append(filename)
+            
+            # 每个时间区间每十张图片选取一张
+            for interval, files in interval_groups.items():
+                if files:
+                    # 按帧号排序
+                    def get_frame_number(filename):
+                        if filename.endswith('.jpg'):
+                            # 面部格式：frame_000070_192.168.0.101_01_20231229164011_20231229165010.jpg
+                            parts = filename.split('_')
+                            if len(parts) >= 2 and parts[0] == 'frame':
+                                try:
+                                    return int(parts[1])
+                                except:
+                                    return 0
+                        else:
+                            # 肢体格式：192.168.0.101_01_20231229153000_20231229154000_000000002190_rendered.png
+                            parts = filename.split('_')
+                            if len(parts) >= 2:
+                                try:
+                                    # 提取倒数第二部分的数字
+                                    return int(parts[-2])
+                                except:
+                                    return 0
+                        return 0
+                    
+                    files.sort(key=get_frame_number)
+                    # 每十张选取一张（均匀采样）
+                    step = 10
+                    for i in range(0, len(files), step):
+                        # 取每十张的中间位置（第5张，索引为4）
+                        selected_idx = min(i + 4, len(files) - 1)
+                        selected_file = files[selected_idx]
+
+                        img_path = os.path.join(class_path, selected_file)
+                        self.samples.append(img_path)
+                        self.targets.append(class_to_idx[class_name])
+    
+    def __len__(self):
+        return len(self.samples)
+
+# 应用变换的数据集类
+class ApplyTransform(torch.utils.data.Dataset):
+    def __init__(self, dataset, indices, transform=None):
+        self.dataset = dataset
+        self.indices = indices
+        self.transform = transform
+
+    def __getitem__(self, index):
+        img_path, target = self.dataset.samples[self.indices[index]], self.dataset.targets[self.indices[index]]
+        from PIL import Image
+        img = Image.open(img_path).convert('RGB')
+        if self.transform:
+            img = self.transform(img)
+        return img, target
+
+    def __len__(self):
+        return len(self.indices)
+
+# --- 4. 自定义数据集加载器 --- 
 class FusionDataset(torch.utils.data.Dataset):
-    def __init__(self, face_subset, pose_subset, face_transform=None, pose_transform=None):
-        self.face_subset = face_subset
-        self.pose_subset = pose_subset
-        self.face_transform = face_transform
-        self.pose_transform = pose_transform
+    def __init__(self, face_data_dir, pose_data_dir):
+        self.samples = []
+        self.targets = []
+        
+        # 加载面部和肢体数据
+        face_dataset = TimeIntervalDataset(face_data_dir)
+        pose_dataset = TimeIntervalDataset(pose_data_dir)
+        
+        # 构建面部样本的映射：{时间区间: {帧号: (路径, 标签)}}
+        face_map = {}
+        for img_path, target in zip(face_dataset.samples, face_dataset.targets):
+            filename = os.path.basename(img_path)
+            if filename.endswith('.jpg'):
+                parts = filename.split('_')
+                if len(parts) >= 5:
+                    interval = f"{parts[-2]}_{parts[-1].split('.')[0]}"
+                    frame_num = 0
+                    if len(parts) >= 2 and parts[0] == 'frame':
+                        try:
+                            frame_num = int(parts[1])
+                        except:
+                            pass
+                    if interval not in face_map:
+                        face_map[interval] = {}
+                    face_map[interval][frame_num] = (img_path, target)
+        
+        # 构建肢体样本的映射：{时间区间: {帧号: 路径}}
+        pose_map = {}
+        for img_path in pose_dataset.samples:
+            filename = os.path.basename(img_path)
+            if filename.endswith('.png'):
+                parts = filename.split('_')
+                if len(parts) >= 6:
+                    interval = f"{parts[-4]}_{parts[-3]}"
+                    frame_num = 0
+                    try:
+                        frame_num = int(parts[-2])
+                    except:
+                        pass
+                    if interval not in pose_map:
+                        pose_map[interval] = {}
+                    pose_map[interval][frame_num] = img_path
+        
+        # 匹配面部和肢体样本
+        matched_count = 0
+        for interval in face_map:
+            if interval in pose_map:
+                for frame_num in face_map[interval]:
+                    if frame_num in pose_map[interval]:
+                        face_path, target = face_map[interval][frame_num]
+                        pose_path = pose_map[interval][frame_num]
+                        self.samples.append((face_path, pose_path))
+                        self.targets.append(target)
+                        matched_count += 1
+        
+        print(f"成功匹配 {matched_count} 对样本")
     
     def __getitem__(self, index):
-        # 获取面部图像和标签
-        face_img, label = self.face_subset[index]
-        # 获取对应索引的肢体图像
-        pose_img, _ = self.pose_subset[index]
+        face_img_path, pose_img_path = self.samples[index]
+        target = self.targets[index]
         
+        from PIL import Image
+        face_img = Image.open(face_img_path).convert('RGB')
+        pose_img = Image.open(pose_img_path).convert('RGB')
+        
+        return face_img, pose_img, target
+    
+    def __len__(self):
+        return len(self.samples)
+
+# 应用变换的融合数据集类
+class FusionApplyTransform(torch.utils.data.Dataset):
+    def __init__(self, dataset, indices, face_transform=None, pose_transform=None):
+        self.dataset = dataset
+        self.indices = indices
+        self.face_transform = face_transform
+        self.pose_transform = pose_transform
+
+    def __getitem__(self, index):
+        face_img, pose_img, target = self.dataset[self.indices[index]]
         if self.face_transform:
             face_img = self.face_transform(face_img)
         if self.pose_transform:
             pose_img = self.pose_transform(pose_img)
-        
-        return face_img, pose_img, label
-    
-    def __len__(self):
-        return len(self.face_subset)
+        return face_img, pose_img, target
 
-# --- 4. 加载数据集并划分训练/验证集 ---
+    def __len__(self):
+        return len(self.indices)
+
+# --- 5. 加载数据集并划分训练/验证集 ---
 print("正在加载面部和肢体数据集...")
-face_full_dataset = datasets.ImageFolder(face_data_dir)
-pose_full_dataset = datasets.ImageFolder(pose_data_dir)
+
+# 创建完整的融合数据集（已匹配的样本）
+full_dataset = FusionDataset(face_data_dir, pose_data_dir)
 
 # 获取索引进行划分 (80% 训练, 20% 验证)
 train_idx, val_idx = train_test_split(
-    list(range(len(face_full_dataset))),
+    list(range(len(full_dataset))),
     test_size=0.2,
-    stratify=face_full_dataset.targets,  # 保持类别比例一致
+    stratify=full_dataset.targets,  # 保持类别比例一致
     random_state=42
 )
 
 # 创建训练和验证数据集
-train_dataset = FusionDataset(
-    Subset(face_full_dataset, train_idx),
-    Subset(pose_full_dataset, train_idx),
+train_dataset = FusionApplyTransform(
+    full_dataset,
+    train_idx,
     face_transform=data_transforms['face_train'],
     pose_transform=data_transforms['pose_train']
 )
-val_dataset = FusionDataset(
-    Subset(face_full_dataset, val_idx),
-    Subset(pose_full_dataset, val_idx),
+val_dataset = FusionApplyTransform(
+    full_dataset,
+    val_idx,
     face_transform=data_transforms['face_val'],
     pose_transform=data_transforms['pose_val']
 )
@@ -121,14 +284,13 @@ class FusionResNet(nn.Module):
         
         # 面部分支
         self.face_backbone = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+        # 保存原始 fc 层的 in_features
+        self.feature_dim = self.face_backbone.fc.in_features
         self.face_backbone.fc = nn.Identity()
         
         # 肢体分支
         self.pose_backbone = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
         self.pose_backbone.fc = nn.Identity()
-        
-        # 获取特征维度
-        self.feature_dim = self.face_backbone.fc.in_features
         
         # 注意力机制
         self.attention = nn.Sequential(
