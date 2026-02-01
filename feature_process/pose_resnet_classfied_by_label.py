@@ -119,9 +119,9 @@ def organize_frames_by_label(frame_root, label_file, output_root):
 
 
 if __name__ == "__main__":
-    frame_root = r"D:\dataset\frame_picture\pose_extracted_frames_124"
-    label_file = r"D:\GraduationProject\demo1\output\2021214398_张颖.csv"
-    output_root = r"D:\dataset\frame_picture\classified_frames_pose_by_label_all"
+    frame_root = r"D:\dataset\frame_picture\pose_101_224"
+    label_file = r"D:\dataset\2021214387_周婉婷.csv"
+    output_root = r"D:\dataset\frame_picture\classified_frames_pose_101_224"
 
     organize_frames_by_label(
         frame_root=frame_root,

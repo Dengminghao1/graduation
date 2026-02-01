@@ -135,9 +135,9 @@ def organize_frames_by_label(frame_folder, label_file, output_root):
             print(f"标签 '{label}' (文件夹 {folder}): {count} 个文件")
 
 if __name__ == "__main__":
-    frame_folder = r"D:\dataset\frame_picture\face_extracted_frames_101"
-    label_file = r"D:\GraduationProject\demo1\output\2021214387_周婉婷.csv"
-    output_root = r"D:\dataset\frame_picture\face_extracted_frames_101\classified_frames"
+    frame_folder = r"D:\dataset\frame_picture\face_extracted_frames_124"
+    label_file = r"D:\dataset\2021214398_张颖.csv"
+    output_root = r"D:\dataset\frame_picture\classified_frames_face_124"
     organize_frames_by_label(
         frame_folder=frame_folder,
         label_file=label_file,

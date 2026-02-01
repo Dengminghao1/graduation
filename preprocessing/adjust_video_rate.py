@@ -527,17 +527,17 @@ def resize_images_to_224x224(input_folder, output_folder=None, overwrite=False):
         打印处理结果
     """
     input_folder = Path(input_folder)
-    
+
     if not input_folder.exists():
         print(f"❌ 输入文件夹不存在: {input_folder}")
         return
-    
+
     # 设置输出文件夹
     if output_folder is None:
         output_folder = input_folder.parent / f"{input_folder.name}_resize_224x224"
     else:
         output_folder = Path(output_folder)
-    
+
     # 创建输出文件夹
     if output_folder.exists():
         if not overwrite:
@@ -547,49 +547,49 @@ def resize_images_to_224x224(input_folder, output_folder=None, overwrite=False):
     else:
         output_folder.mkdir(parents=True, exist_ok=True)
         print(f"✅ 已创建输出文件夹: {output_folder}")
-    
+
     # 获取所有图片文件
     image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.gif']
     image_files = []
-    
+
     for ext in image_extensions:
         image_files.extend(input_folder.glob(f"*{ext.lower()}"))
         image_files.extend(input_folder.glob(f"*{ext.upper()}"))
-    
+
     if not image_files:
         print(f"⚠️ 输入文件夹中没有找到图片文件")
         return
-    
+
     print(f"📁 找到 {len(image_files)} 个图片文件，开始调整尺寸...\n")
-    
+
     success_count = 0
     fail_count = 0
-    
+
     for img_path in image_files:
         try:
             # 打开图片
             img = Image.open(img_path)
-            
+
             # 调整尺寸为 224x224
             resized_img = img.resize((224, 224), Image.LANCZOS)
-            
+
             # 构建输出路径
             output_path = output_folder / img_path.name
-            
+
             # 保存调整后的图片
             resized_img.save(output_path)
-            
+
             # 关闭图片
             img.close()
             resized_img.close()
-            
+
             print(f"✅ 完成: {img_path.name}")
             success_count += 1
-            
+
         except Exception as e:
             print(f"❌ 失败: {img_path.name}, 错误: {e}")
             fail_count += 1
-    
+
     print(f"\n{'=' * 50}")
     print(f"处理完成！")
     print(f"✅ 成功: {success_count} 个")
@@ -598,8 +598,115 @@ def resize_images_to_224x224(input_folder, output_folder=None, overwrite=False):
     print(f"{'=' * 50}")
 
 
-if __name__ == '__main__':
+def copy_files_between_folders(source_folder, target_folder, overwrite=False, recursive=False, extensions=None):
+    """
+    将源文件夹中的文件复制到目标文件夹中
 
+    Args:
+        source_folder: 源文件夹路径
+        target_folder: 目标文件夹路径
+        overwrite: 是否覆盖目标文件夹中的现有文件（默认 False）
+        recursive: 是否递归处理子文件夹（默认 False）
+        extensions: 指定要复制的文件扩展名列表（默认 None，复制所有文件）
+
+    Returns:
+        打印处理结果
+    """
+    import shutil
+
+    source_folder = Path(source_folder)
+    target_folder = Path(target_folder)
+
+    # 检查源文件夹是否存在
+    if not source_folder.exists():
+        print(f"❌ 源文件夹不存在: {source_folder}")
+        return
+
+    # 检查源文件夹是否为空
+    if not any(source_folder.iterdir()):
+        print(f"⚠️ 源文件夹为空: {source_folder}")
+        return
+
+    # 创建目标文件夹
+    if not target_folder.exists():
+        target_folder.mkdir(parents=True, exist_ok=True)
+        print(f"✅ 已创建目标文件夹: {target_folder}")
+
+    # 收集要复制的文件
+    files_to_copy = []
+
+    if recursive:
+        # 递归收集所有文件
+        for root, _, files in os.walk(source_folder):
+            for file in files:
+                file_path = Path(root) / file
+                files_to_copy.append(file_path)
+    else:
+        # 只收集顶层文件
+        for item in source_folder.iterdir():
+            if item.is_file():
+                files_to_copy.append(item)
+
+    # 根据扩展名筛选文件
+    if extensions:
+        filtered_files = []
+        for file_path in files_to_copy:
+            if file_path.suffix.lower() in [ext.lower() for ext in extensions]:
+                filtered_files.append(file_path)
+        files_to_copy = filtered_files
+
+    if not files_to_copy:
+        print(f"⚠️ 没有找到符合条件的文件")
+        return
+
+    print(f"📁 找到 {len(files_to_copy)} 个文件，开始复制...\n")
+
+    success_count = 0
+    fail_count = 0
+
+    # 复制文件
+    for file_path in files_to_copy:
+        try:
+            # 构建目标文件路径
+            if recursive:
+                # 保持相对路径结构
+                relative_path = file_path.relative_to(source_folder)
+                target_file_path = target_folder / relative_path
+                # 确保目标文件夹结构存在
+                target_file_path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                # 直接复制到目标文件夹根目录
+                target_file_path = target_folder / file_path.name
+
+            # 检查目标文件是否已存在
+            if target_file_path.exists():
+                if overwrite:
+                    print(f"⚠️ 覆盖现有文件: {target_file_path.name}")
+                    target_file_path.unlink()  # 删除现有文件
+                else:
+                    print(f"⚠️ 跳过已存在文件: {target_file_path.name}")
+                    fail_count += 1
+                    continue
+
+            # 复制文件（使用 copy2 保留文件元数据）
+            shutil.copy2(str(file_path), str(target_file_path))
+            # print(f"✅ 复制: {file_path.name} → {target_file_path}")
+            success_count += 1
+
+        except Exception as e:
+            print(f"❌ 失败: {file_path.name}, 错误: {e}")
+            fail_count += 1
+
+    print(f"\n{'=' * 50}")
+    print(f"复制完成！")
+    print(f"✅ 成功复制: {success_count} 个文件")
+    print(f"❌ 复制失败: {fail_count} 个文件")
+    print(f"📂 源文件夹: {source_folder}")
+    print(f"📂 目标文件夹: {target_folder}")
+    print(f"{'=' * 50}")
+
+
+if __name__ == '__main__':
     # # ================= 配置区域 =================
     # input_file = r"C:\Users\dengm\Desktop\dataset\merged_face_pose_eeg_feature_files_new2.csv"  # 输入文件路径
     # output_file = r"C:\Users\dengm\Desktop\dataset\merged_face_pose_eeg_feature_files_new3.csv"  # 输出文件路径
@@ -628,13 +735,52 @@ if __name__ == '__main__':
     #
     # # 执行检查
     # check_frame_sequence(image_folder)
-    # # 示例：调整图片尺寸为 224x224
-    # input_folder = r"D:\Pycharm_Projects\demo1_trae\input_images"  # 你的图片文件夹路径
-    # output_folder = r"D:\Pycharm_Projects\demo1_trae\output_images_224x224"  # 输出文件夹路径（可选）
-    # 
+    # 示例：调整图片尺寸为 224x224
+    input_folder = r"D:\dataset\frame_picture\pose_extracted_frames_101"  # 你的图片文件夹路径
+    output_folder = r"D:\dataset\frame_picture\pose_101_224"  # 输出文件夹路径（可选）
+
     # 执行调整尺寸
     resize_images_to_224x224(
         input_folder=input_folder,
         output_folder=output_folder,  # 可选，默认在输入文件夹同级创建 resize_224x224 文件夹
-        overwrite=False  # 是否覆盖现有文件
+        overwrite=True  # 是否覆盖现有文件
     )
+
+    # # 示例：复制文件
+    # # 示例 1: 基本用法
+    # source = r"D:\dataset\frame_picture\face_extracted_frames_101"  # 源文件夹路径
+    # target = r"D:\dataset\frame_picture\face_extracted_frames_all"  # 目标文件夹路径
+
+    # 执行复制
+    # copy_files_between_folders(
+    #     source_folder=source,
+    #     target_folder=target,
+    #     overwrite=False,  # 是否覆盖现有文件
+    #     recursive=False,  # 是否递归处理子文件夹
+    #     extensions=None  # 指定要复制的文件扩展名列表
+    # )
+    # 
+    # # 示例 2: 递归复制
+    # # copy_files_between_folders(
+    # #     source_folder=source,
+    # #     target_folder=target,
+    # #     overwrite=False,
+    # #     recursive=True  # 递归处理子文件夹
+    # # )
+    # 
+    # # 示例 3: 指定文件扩展名
+    # # copy_files_between_folders(
+    # #     source_folder=source,
+    # #     target_folder=target,
+    # #     overwrite=False,
+    # #     recursive=False,
+    # #     extensions=['.jpg', '.png']  # 只复制 JPG 和 PNG 文件
+    # # )
+    # 
+    # # 示例 4: 覆盖现有文件
+    # # copy_files_between_folders(
+    # #     source_folder=source,
+    # #     target_folder=target,
+    # #     overwrite=True,  # 覆盖现有文件
+    # #     recursive=False
+    # # )

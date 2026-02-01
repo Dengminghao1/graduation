@@ -82,8 +82,8 @@ def copy_images_by_time_interval(source_folder, output_base_folder, preview=True
 # ================= 使用示例 =================
 if __name__ == "__main__":
     # 配置路径
-    source_images = r'D:\dataset\frame_picture\pose_extracted_frames_124'  # 源文件夹
-    output_folder = r"D:\dataset\frame_picture\classified_frames_pose_by_label_all"  # 你指定的输出文件夹
+    source_images = r'D:\dataset\frame_picture\pose_extracted_frames_101'  # 源文件夹
+    output_folder = r"D:\dataset\frame_picture\classfied_by_time_pose_101"  # 你指定的输出文件夹
 
     # 第一步：预览（强烈建议先运行这一步）
     # print("===== 第一步：预览操作 =====")
