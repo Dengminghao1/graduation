@@ -324,33 +324,35 @@ if __name__ == '__main__':
         if avg_val_acc > best_val_acc:
             best_val_acc = avg_val_acc
             patience_counter = 0  # 重置计数器
-# 清除旧的 best 模型（只删除准确率低于当前最佳的）
-        for old_file in glob.glob("best_model_acc_face_lstm_*.pth"):
-            # 从文件名中提取准确率
-            try:
-                old_acc_str = old_file.split('_')[-1].split('.')[0]
-                old_acc = int(old_acc_str) / 10000
-                # 只有当旧模型的准确率低于当前最佳准确率时才删除
-                if old_acc < best_val_acc:
-                    os.remove(old_file)
-                    print(f"🔄 删除旧模型: {old_file} (准确率: {old_acc:.4f})")
-            except:
-                # 如果文件名格式不正确，也删除
-                os.remove(old_file)
-                print(f"🔄 删除格式不正确的旧模型: {old_file}")
 
+            # 清除旧的 best 模型（只删除准确率低于当前最佳的）
+            for old_file in glob.glob("best_model_acc_face_bilstm_*.pth"):
+                # 从文件名中提取准确率
+                try:
+                    old_acc_str = old_file.split('_')[-1].split('.')[0]
+                    old_acc = int(old_acc_str) / 10000
+                    # 只有当旧模型的准确率低于当前最佳准确率时才删除
+                    if old_acc < best_val_acc:
+                        os.remove(old_file)
+                        print(f"🔄 删除旧模型: {old_file} (准确率: {old_acc:.4f})")
+                except:
+                    # 如果文件名格式不正确，也删除
+                    os.remove(old_file)
+                    print(f"🔄 删除格式不正确的旧模型: {old_file}")
+
+            # 保存新模型
             acc_suffix = int(best_val_acc * 10000)
             save_path = f'best_model_acc_{acc_suffix}.pth'
             torch.save(model.state_dict(), save_path)
-            print(f" 发现更优模型: {save_path}")
+            print(f"🌟 发现更优模型: {save_path}")
         else:
             patience_counter += 1
             print(f"⚠ 验证集表现未提升，早停计数器: {patience_counter}/{early_stop_patience}")
 
             # 触发早停
-        if patience_counter >= early_stop_patience:
-            print(" [Early Stopping] 验证集表现长期停滞，提前结束训练。")
-            break
+            if patience_counter >= early_stop_patience:
+                print("🛑 [Early Stopping] 验证集表现长期停滞，提前结束训练。")
+                break
 
     # --- 4. 绘制结果图像 ---
     plt.figure(figsize=(12, 5))
@@ -374,7 +376,7 @@ if __name__ == '__main__':
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig('training_results_lstm.png')
+    plt.savefig('training_results_bilstm_face.png')
     plt.show()
 
     print(f"训练结束! 最佳验证集准确率: {best_val_acc:.4f}")

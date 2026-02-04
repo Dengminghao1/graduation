@@ -218,8 +218,9 @@ for epoch in range(num_epochs):
     if epoch_val_acc > best_val_acc:
         best_val_acc = epoch_val_acc
         patience_counter = 0  # 重置计数器
+
         # 清除旧的 best 模型（只删除准确率低于当前最佳的）
-        for old_file in glob.glob("best_model_acc_face_*.pth"):
+        for old_file in glob.glob("best_model_acc_face_lstm_*.pth"):
             # 从文件名中提取准确率
             try:
                 old_acc_str = old_file.split('_')[-1].split('.')[0]
@@ -233,20 +234,20 @@ for epoch in range(num_epochs):
                 os.remove(old_file)
                 print(f"🔄 删除格式不正确的旧模型: {old_file}")
 
-        # 转换准确率为整数，如 0.9542 -> 9542
+        # 保存新模型
         acc_suffix = int(best_val_acc * 10000)
-        save_path = f'best_model_acc_{acc_suffix}.pth'
+        save_path = f'best_model_acc_face_{acc_suffix}.pth'
         torch.save(model.state_dict(), save_path)
         print(f"🌟 发现更优模型: {save_path}")
-
     else:
         patience_counter += 1
         print(f"⚠ 验证集表现未提升，早停计数器: {patience_counter}/{early_stop_patience}")
 
-    # 触发早停
-    if patience_counter >= early_stop_patience:
-        print("🛑 [Early Stopping] 验证集表现长期停滞，提前结束训练。")
-        break
+        # 触发早停
+        if patience_counter >= early_stop_patience:
+            print("🛑 [Early Stopping] 验证集表现长期停滞，提前结束训练。")
+            break
+
 # --- 4. 绘制并保存图像 ---
 plt.figure(figsize=(12, 5))
 
@@ -269,7 +270,7 @@ plt.title('Training & Validation Accuracy')
 plt.legend()
 
 plt.tight_layout()
-plt.savefig('training_results.png')  # 保存为图片文件
+plt.savefig('training_results_face.png')  # 保存为图片文件
 plt.show()
 
 print(f'训练完成! 最佳验证准确率: {best_val_acc:.4f}')

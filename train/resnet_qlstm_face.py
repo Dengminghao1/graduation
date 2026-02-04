@@ -298,7 +298,7 @@ class ResNet50QTALSTM(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(hidden_size, 256),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.6),
             nn.Linear(256, num_classes)
         )
 
@@ -351,9 +351,12 @@ if __name__ == '__main__':
     # 图像预处理
     data_transforms = {
         'train': transforms.Compose([
-            transforms.Resize(224),
-            # transforms.RandomHorizontalFlip(),
-            # transforms.ColorJitter(0.2, 0.2, 0.2),
+            transforms.Resize(256),
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(15),
+            transforms.ColorJitter(0.2, 0.2, 0.2),
+            transforms.RandomGrayscale(p=0.1),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ]),
@@ -400,8 +403,8 @@ if __name__ == '__main__':
     # 与resnet_face.py保持一致
     criterion = nn.CrossEntropyLoss()
     # --- 在初始化优化器后添加 ---
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)  # 与resnet_face.py保持一致
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)  # 与resnet_face.py保持一致
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-3)  # 增加权重衰减以增强正则化
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, factor=0.1)  # 减少 patience 以更激进地衰减学习率
     scaler = GradScaler()
 
     # 用于绘图的列表
@@ -414,7 +417,7 @@ if __name__ == '__main__':
     print(f"开始训练... 训练样本: {len(train_dataset)}, 验证样本: {len(val_dataset)}")
 
     patience_counter = 0
-    early_stop_patience = 10
+    early_stop_patience = 5  # 减少早停耐心值，防止过拟合
     # --- 3. 训练循环 ---
     for epoch in range(NUM_EPOCHS):
         # --- 1. 训练阶段 (Training Phase) ---
@@ -433,6 +436,9 @@ if __name__ == '__main__':
                 loss = criterion(outputs, labels)
 
             scaler.scale(loss).backward()
+            # 添加梯度裁剪，防止梯度爆炸
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
 
@@ -492,33 +498,35 @@ if __name__ == '__main__':
         if avg_val_acc > best_val_acc:
             best_val_acc = avg_val_acc
             patience_counter = 0  # 重置计数器
-# 清除旧的 best 模型（只删除准确率低于当前最佳的）
-        for old_file in glob.glob("best_model_acc_face_lstm_*.pth"):
-            # 从文件名中提取准确率
-            try:
-                old_acc_str = old_file.split('_')[-1].split('.')[0]
-                old_acc = int(old_acc_str) / 10000
-                # 只有当旧模型的准确率低于当前最佳准确率时才删除
-                if old_acc < best_val_acc:
-                    os.remove(old_file)
-                    print(f"🔄 删除旧模型: {old_file} (准确率: {old_acc:.4f})")
-            except:
-                # 如果文件名格式不正确，也删除
-                os.remove(old_file)
-                print(f"🔄 删除格式不正确的旧模型: {old_file}")
 
+            # 清除旧的 best 模型（只删除准确率低于当前最佳的）
+            for old_file in glob.glob("best_model_acc_face_qlstm_*.pth"):
+                # 从文件名中提取准确率
+                try:
+                    old_acc_str = old_file.split('_')[-1].split('.')[0]
+                    old_acc = int(old_acc_str) / 10000
+                    # 只有当旧模型的准确率低于当前最佳准确率时才删除
+                    if old_acc < best_val_acc:
+                        os.remove(old_file)
+                        print(f"🔄 删除旧模型: {old_file} (准确率: {old_acc:.4f})")
+                except:
+                    # 如果文件名格式不正确，也删除
+                    os.remove(old_file)
+                    print(f"🔄 删除格式不正确的旧模型: {old_file}")
+
+            # 保存新模型
             acc_suffix = int(best_val_acc * 10000)
-            save_path = f'best_model_acc_{acc_suffix}.pth'
+            save_path = f'best_model_acc_qlstm_{acc_suffix}.pth'
             torch.save(model.state_dict(), save_path)
-            print(f" 发现更优模型: {save_path}")
+            print(f"🌟 发现更优模型: {save_path}")
         else:
             patience_counter += 1
             print(f"⚠ 验证集表现未提升，早停计数器: {patience_counter}/{early_stop_patience}")
 
             # 触发早停
-        if patience_counter >= early_stop_patience:
-            print(" [Early Stopping] 验证集表现长期停滞，提前结束训练。")
-            break
+            if patience_counter >= early_stop_patience:
+                print("🛑 [Early Stopping] 验证集表现长期停滞，提前结束训练。")
+                break
 
     # --- 4. 绘制结果图像 ---
     plt.figure(figsize=(12, 5))
@@ -542,7 +550,7 @@ if __name__ == '__main__':
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig('training_results_lstm.png')
+    plt.savefig('training_results_qlstm.png')
     plt.show()
 
     print(f"训练结束! 最佳验证集准确率: {best_val_acc:.4f}")
