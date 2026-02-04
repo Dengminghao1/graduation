@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch import autocast
 from torch.cuda.amp import GradScaler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision import datasets, transforms, models
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
@@ -15,10 +16,10 @@ import matplotlib.pyplot as plt
 # 用第二块显卡训练
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # --- 1. 配置参数 ---
-data_dir = r"D:\dataset\frame_picture\classified_frames_face_101"  # 你之前分类好的根目录
+data_dir = r"/home/ccnu/Desktop/dataset/classified_frames_pose_by_label_all"  # 你之前分类好的根目录
 batch_size = 256
 num_epochs = 100
-learning_rate = 0.0001
+learning_rate = 0.0001  # 与resnet_face.py保持一致
 num_classes = 5  # 低, 稍低, 中性, 稍高, 高
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -26,16 +27,23 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # ResNet 标准输入是 224x224
 data_transforms = {
     'train': transforms.Compose([
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(0.2, 0.2, 0.2),
+        transforms.RandomResizedCrop(224),  # 与resnet_face.py保持一致
+        transforms.RandomHorizontalFlip(),  # 与resnet_face.py保持一致
+        transforms.RandomRotation(5),  # 适合pose数据
+        transforms.RandomAffine(
+            degrees=0,
+            translate=(0.03, 0.03),
+            scale=(0.98, 1.02)
+        ),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize(mean=[0.5, 0.5, 0.5],  # 适合pose数据（黑色背景）
+                             std=[0.5, 0.5, 0.5])
     ]),
     'val': transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((224, 224)),  # 与resnet_face.py保持一致
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize(mean=[0.5, 0.5, 0.5],  # 适合pose数据（黑色背景）
+                             std=[0.5, 0.5, 0.5])
     ]),
 }
 
@@ -58,11 +66,11 @@ class TimeIntervalDataset(torch.utils.data.Dataset):
             # 按时间区间分组文件
             interval_groups = {}
             for filename in os.listdir(class_path):
-                if filename.endswith('.jpg'):
-                    # 提取时间区间：frame_000000_192.168.0.101_01_20231229153000_20231229154000.jpg
+                if filename.endswith('.png'):
+                    # 提取时间区间：192.168.0.101_01_20231229153000_20231229154000_000000002190_rendered.png
                     parts = filename.split('_')
-                    if len(parts) >= 5:
-                        interval = f"{parts[-2]}_{parts[-1].split('.')[0]}"
+                    if len(parts) >= 6:
+                        interval = f"{parts[-4]}_{parts[-3]}"
                         if interval not in interval_groups:
                             interval_groups[interval] = []
                         interval_groups[interval].append(filename)
@@ -71,7 +79,17 @@ class TimeIntervalDataset(torch.utils.data.Dataset):
             for interval, files in interval_groups.items():
                 if files:
                     # 按帧号排序
-                    files.sort()
+                    def get_frame_number(filename):
+                        parts = filename.split('_')
+                        if len(parts) >= 2:
+                            try:
+                                # 提取倒数第二部分的数字
+                                return int(parts[-2])
+                            except:
+                                return 0
+                        return 0
+                    
+                    files.sort(key=get_frame_number)
                     # 每十张选取一张（均匀采样）
                     step = 10
                     for i in range(0, len(files), step):
@@ -87,7 +105,6 @@ class TimeIntervalDataset(torch.utils.data.Dataset):
         return len(self.samples)
 
 # 创建数据集实例
-
 full_dataset = TimeIntervalDataset(data_dir)
 
 # 获取索引进行划分 (80% 训练, 20% 验证)
@@ -135,9 +152,10 @@ model = model.to(device)
 
 # --- 5. 损失函数与优化器 ---
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)  # 与resnet_face.py保持一致
 # 4. 增加学习率调整策略
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)  # 与resnet_face.py保持一致
+
 # --- 6. 训练循环 ---
 # 初始化用于记录绘图数据的字典
 history = {
@@ -151,7 +169,7 @@ scaler = GradScaler()  # 4090 混合精度加速器
 print(f"开始训练... 设备: {device}")
 
 patience_counter = 0
-early_stop_patience = 10
+early_stop_patience = 10  # 与resnet_face.py保持一致
 for epoch in range(num_epochs):
     # --- 1. 训练阶段 ---
     model.train()
@@ -219,7 +237,7 @@ for epoch in range(num_epochs):
         best_val_acc = epoch_val_acc
         patience_counter = 0  # 重置计数器
         # 清除旧的 best 模型（只删除准确率低于当前最佳的）
-        for old_file in glob.glob("best_model_acc_face_*.pth"):
+        for old_file in glob.glob("best_model_acc_pose_*.pth"):
             # 从文件名中提取准确率
             try:
                 old_acc_str = old_file.split('_')[-1].split('.')[0]
@@ -232,7 +250,7 @@ for epoch in range(num_epochs):
                 # 如果文件名格式不正确，也删除
                 os.remove(old_file)
                 print(f"🔄 删除格式不正确的旧模型: {old_file}")
-
+        
         # 转换准确率为整数，如 0.9542 -> 9542
         acc_suffix = int(best_val_acc * 10000)
         save_path = f'best_model_acc_{acc_suffix}.pth'

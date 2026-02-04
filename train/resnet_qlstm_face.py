@@ -12,11 +12,132 @@ from PIL import Image
 from datetime import datetime, timedelta
 from collections import defaultdict
 from tqdm import tqdm
-
 # 用第二块显卡训练
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# Quality-aware Temporal Attention LSTM
+class QTALSTMCell(nn.Module):
+    """
+    Quality-aware Temporal Attention LSTM Cell (Confidence-only Version)
+    """
+
+    def __init__(self, input_size, hidden_size, use_smooth=True):
+        super(QTALSTMCell, self).__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.use_smooth = use_smooth
+
+        # LSTM gates
+        self.W = nn.Linear(input_size + hidden_size, 4 * hidden_size)
+
+        # Learnable decay weight
+        self.alpha = nn.Parameter(torch.tensor(1.0))
+
+        # Adaptive decay strength
+        self.lambda_param = nn.Parameter(torch.tensor(0.5))
+
+        # For EMA smoothing
+        self.register_buffer("conf_prev", torch.zeros(1))
+
+
+    def forward(self, x_t, h_prev, c_prev, conf_t):
+        """
+        x_t     : [B, D]
+        h_prev  : [B, H]
+        c_prev  : [B, H]
+        conf_t  : [B]   in [0,1]
+        """
+
+        # ---------- 1. Confidence smoothing (optional) ----------
+        if self.use_smooth:
+            if self.conf_prev.numel() != conf_t.numel():
+                self.conf_prev = conf_t.detach()
+
+            conf_s = 0.8 * self.conf_prev + 0.2 * conf_t
+            self.conf_prev = conf_s.detach()
+        else:
+            conf_s = conf_t
+
+        # ---------- 2. Quality-aware delta ----------
+        alpha = torch.relu(self.alpha)
+
+        delta_t = alpha * (1 - conf_s)
+
+        # ---------- 3. Exponential decay ----------
+        s_t = torch.exp(-delta_t).unsqueeze(1)
+
+        # ---------- 4. Adaptive memory attenuation ----------
+        lambda_ = torch.sigmoid(self.lambda_param)
+
+        decay = 1 - lambda_ * (1 - s_t)
+
+        c_prev = c_prev * decay
+
+        # ---------- 5. LSTM gates ----------
+        combined = torch.cat([x_t, h_prev], dim=1)
+
+        gates = self.W(combined)
+
+        f_t, i_t, o_t, g_t = gates.chunk(4, dim=1)
+
+        f_t = torch.sigmoid(f_t)
+        i_t = torch.sigmoid(i_t)
+        o_t = torch.sigmoid(o_t)
+        g_t = torch.tanh(g_t)
+
+        # ---------- 6. Input modulation ----------
+        i_t = i_t * s_t
+
+        # ---------- 7. Cell update ----------
+        c_t = f_t * c_prev + i_t * g_t
+
+        h_t = o_t * torch.tanh(c_t)
+
+        return h_t, c_t
+
+class QTALSTM(nn.Module):
+
+    def __init__(self, input_size, hidden_size, use_smooth=True):
+        super(QTALSTM, self).__init__()
+
+        self.hidden_size = hidden_size
+
+        self.cell = QTALSTMCell(
+            input_size,
+            hidden_size,
+            use_smooth
+        )
+
+
+    def forward(self, x, conf):
+        """
+        x    : [B, T, D]
+        conf : [B, T]
+        """
+
+        B, T, _ = x.size()
+
+        h = torch.zeros(B, self.hidden_size, device=x.device)
+        c = torch.zeros(B, self.hidden_size, device=x.device)
+
+        outputs = []
+
+        for t in range(T):
+
+            h, c = self.cell(
+                x[:, t],
+                h,
+                c,
+                conf[:, t]
+            )
+
+            outputs.append(h.unsqueeze(1))
+
+        return torch.cat(outputs, dim=1)
+
+
 class MultiSegmentAttentionDataset(Dataset):
-    def __init__(self, img_dir, csv_dir, seq_len=20, transform=None, segment_keys=None):
+    def __init__(self, img_dir, csv_dir, conf_csv_path=None, seq_len=20, transform=None, segment_keys=None):
         self.img_dir = img_dir
         self.seq_len = seq_len
         self.transform = transform
@@ -37,6 +158,18 @@ class MultiSegmentAttentionDataset(Dataset):
             df = pd.read_csv(os.path.join(csv_dir, cf))
             df['timestamp'] = pd.to_datetime(df['timestamp'])
             self.label_dfs[(s_str, e_str)] = df
+            
+        # 2. 加载置信度 CSV 文件（如果提供）
+        self.conf_df = None
+        if conf_csv_path:
+            print(f"正在加载置信度文件: {conf_csv_path}...")
+            try:
+                # 直接加载单个置信度CSV文件
+                self.conf_df = pd.read_csv(conf_csv_path)
+                self.conf_df['timestamp'] = pd.to_datetime(self.conf_df['timestamp_pose'])
+                print(f"成功加载置信度文件，共 {len(self.conf_df)} 条记录")
+            except Exception as e:
+                print(f"警告: 加载置信度文件失败: {e}")
 
         # 2. 解析图像文件并按时间段分组
         segments = defaultdict(list)
@@ -50,8 +183,9 @@ class MultiSegmentAttentionDataset(Dataset):
             e_time_str = parts[5].replace('.jpg', '')
 
             start_dt = datetime.strptime(s_time_str, "%Y%m%d%H%M%S")
-            curr_dt = start_dt + timedelta(seconds=frame_idx * 0.1)
-
+            # curr_dt = start_dt + timedelta(seconds=frame_idx * 0.1)
+            total_milliseconds = frame_idx * 100  # 0.1秒 = 100毫秒
+            curr_dt = start_dt + timedelta(milliseconds=total_milliseconds)
             segments[(s_time_str, e_time_str)].append({
                 'filename': f,
                 'time': curr_dt,
@@ -81,15 +215,45 @@ class MultiSegmentAttentionDataset(Dataset):
                 seq_frames = seg_files[i: i + seq_len]
                 end_frame_time = seq_frames[-1]['time']
 
-                # 在当前段所属的 DataFrame 中找最接近的时间点
-                time_diffs = (current_df['timestamp'] - end_frame_time).abs()
-                closest_idx = time_diffs.idxmin()
-
-                if time_diffs.min() <= timedelta(seconds=1):
+                # 为序列中的每张图片单独获取置信度
+                conf_sequence = []
+                valid_sequence = True
+                
+                # 对于序列中的每张图片
+                for frame in seq_frames:
+                    frame_time = frame['time']
+                    
+                    # 从置信度CSV文件中获取置信度
+                    if self.conf_df is not None:
+                        # 在置信度 DataFrame 中找最接近的时间点
+                        time_diffs = (self.conf_df['timestamp'] - frame_time).abs()
+                        closest_idx = time_diffs.idxmin()
+                        
+                        if time_diffs.min() <= timedelta(seconds=1):
+                            # 尝试获取 confidence 值，如果不存在则设为默认值 0.5
+                            confidence = self.conf_df.loc[closest_idx].get('confidence', 0.5)
+                            conf_sequence.append(confidence)
+                        else:
+                            # 如果找不到对应的时间点，标记序列为无效
+                            valid_sequence = False
+                            break
+                    else:
+                        # 如果没有提供置信度文件，使用默认值 0.5
+                        confidence = 0.5
+                        conf_sequence.append(confidence)
+                
+                # 如果所有帧都找到了有效的置信度，才保存该序列
+                if valid_sequence and conf_sequence:
+                    # 使用最后一帧的标签
+                    end_frame_time = seq_frames[-1]['time']
+                    time_diffs = (current_df['timestamp'] - end_frame_time).abs()
+                    closest_idx = time_diffs.idxmin()
                     label_str = current_df.loc[closest_idx, 'attention']
+                    
                     self.valid_sequences.append({
                         'files': [x['filename'] for x in seq_frames],
-                        'label': self.label_map.get(label_str, 2)
+                        'label': self.label_map.get(label_str, 2),
+                        'confidence': conf_sequence
                     })
 
         print(f"成功构建序列总数: {len(self.valid_sequences)}")
@@ -105,15 +269,16 @@ class MultiSegmentAttentionDataset(Dataset):
             if self.transform:
                 img = self.transform(img)
             frames.append(img)
-        return torch.stack(frames), torch.tensor(data['label'], dtype=torch.long)
+        # 返回帧序列、标签和置信度序列
+        return torch.stack(frames), torch.tensor(data['label'], dtype=torch.long), torch.tensor(data['confidence'], dtype=torch.float32)
 
 
 # ===========================
 # 2. 模型定义 (ResNet50 + LSTM)
 # ===========================
-class ResNet50LSTM(nn.Module):
-    def __init__(self, num_classes=5, hidden_size=512, num_lstm_layers=2):
-        super(ResNet50LSTM, self).__init__()
+class ResNet50QTALSTM(nn.Module):
+    def __init__(self, num_classes=5, hidden_size=512):
+        super(ResNet50QTALSTM, self).__init__()
         weights = models.ResNet50_Weights.IMAGENET1K_V1
         resnet = models.resnet50(weights=weights)
 
@@ -123,12 +288,11 @@ class ResNet50LSTM(nn.Module):
         # 新增：特征标准化层，防止 CNN 输出范围波动过大
         self.bn = nn.BatchNorm1d(self.resnet_out_dim)
 
-        self.lstm = nn.LSTM(
+        # 使用 QTALSTM 替代 LSTM
+        self.qlstm = QTALSTM(
             input_size=self.resnet_out_dim,
             hidden_size=hidden_size,
-            num_layers=num_lstm_layers,
-            batch_first=True,
-            dropout=0.5  # 增加 Dropout
+            use_smooth=True
         )
 
         self.classifier = nn.Sequential(
@@ -138,7 +302,7 @@ class ResNet50LSTM(nn.Module):
             nn.Linear(256, num_classes)
         )
 
-    def forward(self, x):
+    def forward(self, x, conf):
         b, s, c, h, w = x.shape
         x_flat = x.view(b * s, c, h, w)
         features = self.feature_extractor(x_flat)  # (B*S, 2048, 1, 1)
@@ -150,11 +314,11 @@ class ResNet50LSTM(nn.Module):
         # 恢复时序维度
         features = features.view(b, s, -1)
 
-        self.lstm.flatten_parameters()
-        lstm_out, _ = self.lstm(features)
+        # 使用 QTALSTM 处理序列，使用外部传递的置信度
+        qlstm_out = self.qlstm(features, conf)
 
         # 取最后一个时间步
-        last_timestep_out = lstm_out[:, -1, :]
+        last_timestep_out = qlstm_out[:, -1, :]
         return self.classifier(last_timestep_out)
 
 
@@ -165,6 +329,12 @@ if __name__ == '__main__':
     # --- 配置 ---
     IMG_DIR = r'/home/ccnu/Desktop/dataset/extracted_frames_pic/face_extracted_frames_all'  # <-- 修改这里
     CSV_DIR = r'/home/ccnu/Desktop/dataset/eeg_csv'  # <-- 修改这里
+    # 添加置信度CSV文件目录参数
+    CONF_CSV_PATH = r'/home/ccnu/Desktop/dataset/confidence.csv'  # <-- 修改这里
+    IMG_DIR = r'D:\dataset\frame_picture\classfied_by_time_face_101\20231229153000_20231229154000'  # <-- 修改这里
+    CSV_DIR = r'D:\dataset\eeg_csv'  # <-- 修改这里
+    # 添加置信度CSV文件目录参数
+    CONF_CSV_PATH = r"D:\dataset\Dataset_align_face_pose_eeg_feature.csv" # <-- 修改这里
     # IMG_DIR = r'/home/ccnu/Desktop/dataset/frames_face_all'  # <-- 修改这里
     # CSV_DIR = r'/home/ccnu/Desktop/dataset/eeg_csv'  # <-- 修改这里
 
@@ -214,7 +384,8 @@ if __name__ == '__main__':
     #
     # train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
     # val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
-    full_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_DIR, SEQ_LEN, data_transforms['train'])
+    
+    full_dataset = MultiSegmentAttentionDataset(IMG_DIR, CSV_DIR, CONF_CSV_PATH, SEQ_LEN, data_transforms['train'])
 
     # 获取数据集长度并进行随机切分
     train_size = int(0.8 * len(full_dataset))
@@ -225,7 +396,7 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
     # --- 2. 模型初始化 ---
-    model = ResNet50LSTM(num_classes=NUM_CLASSES).to(DEVICE)
+    model = ResNet50QTALSTM(num_classes=NUM_CLASSES).to(DEVICE)
     # 与resnet_face.py保持一致
     criterion = nn.CrossEntropyLoss()
     # --- 在初始化优化器后添加 ---
@@ -253,12 +424,12 @@ if __name__ == '__main__':
         # 使用 tqdm 包装 train_loader
         train_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS} [Train]")
 
-        for inputs, labels in train_bar:
-            inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
+        for inputs, labels, conf in train_bar:
+            inputs, labels, conf = inputs.to(DEVICE), labels.to(DEVICE), conf.to(DEVICE)
             optimizer.zero_grad()
 
             with autocast(device_type='cuda'):
-                outputs = model(inputs)
+                outputs = model(inputs, conf)
                 loss = criterion(outputs, labels)
 
             scaler.scale(loss).backward()
@@ -286,11 +457,11 @@ if __name__ == '__main__':
         val_bar = tqdm(val_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS} [Val]")
 
         with torch.no_grad():
-            for inputs, labels in val_bar:
-                inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
+            for inputs, labels, conf in val_bar:
+                inputs, labels, conf = inputs.to(DEVICE), labels.to(DEVICE), conf.to(DEVICE)
 
                 with autocast(device_type='cuda'):
-                    outputs = model(inputs)
+                    outputs = model(inputs, conf)
                     v_loss = criterion(outputs, labels)
 
                 val_loss += v_loss.item() * inputs.size(0)

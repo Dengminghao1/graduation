@@ -128,11 +128,12 @@ class ResNet50LSTM(nn.Module):
             hidden_size=hidden_size,
             num_layers=num_lstm_layers,
             batch_first=True,
+            bidirectional=True,  # 改为双向 LSTM
             dropout=0.5  # 增加 Dropout
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_size, 256),
+            nn.Linear(hidden_size * 2, 256),  # 双向 LSTM 的输出维度翻倍
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(256, num_classes)
@@ -153,7 +154,9 @@ class ResNet50LSTM(nn.Module):
         self.lstm.flatten_parameters()
         lstm_out, _ = self.lstm(features)
 
-        # 取最后一个时间步
+        # 对于双向 LSTM，我们需要同时考虑两个方向的输出
+        # 取最后一个时间步的正向输出和第一个时间步的反向输出
+        # 或者更简单的方法：取最后一个时间步的所有输出（包含两个方向）
         last_timestep_out = lstm_out[:, -1, :]
         return self.classifier(last_timestep_out)
 
