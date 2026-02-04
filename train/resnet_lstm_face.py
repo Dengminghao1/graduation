@@ -339,7 +339,7 @@ if __name__ == '__main__':
 
             # 保存新模型
             acc_suffix = int(best_val_acc * 10000)
-            save_path = f'best_model_acc_lstm_face_{acc_suffix}.pth'
+            save_path = f'best_model_acc_face_lstm_{acc_suffix}.pth'
             torch.save(model.state_dict(), save_path)
             print(f"🌟 发现更优模型: {save_path}")
         else:
