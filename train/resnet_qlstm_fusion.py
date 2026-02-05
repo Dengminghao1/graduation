@@ -2,23 +2,31 @@ import glob
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from PIL import Image
 from torch import autocast
 from torch.cuda.amp import GradScaler
 from torchvision import datasets, transforms, models
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, Dataset
 from sklearn.model_selection import train_test_split
 import os
-from tqdm import tqdm
-import matplotlib.pyplot as plt
 import pandas as pd
 from datetime import datetime, timedelta
+from collections import defaultdict
+from tqdm import tqdm
+import matplotlib.pyplot as plt
 # 用第二块显卡训练
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # --- 1. 配置参数 ---
-face_data_dir = r"/home/ccnu/Desktop/dataset/classified_frames_face_by_label_all"  # 面部数据
-pose_data_dir = r"/home/ccnu/Desktop/dataset/classified_frames_pose_by_label_all"  # 肢体数据
+face_data_dir = r"/home/ccnu/Desktop/dataset/extracted_frames_pic/face_extracted_frames_all"  # 面部数据
+pose_data_dir = r"/home/ccnu/Desktop/dataset/extracted_frames_pic/pose_extracted_frames_all"  # 肢体数据
+csv_dir = r"/home/ccnu/Desktop/dataset/eeg_csv"  # 标签CSV文件目录
+
+# face_data_dir = r"D:\dataset\frame_picture\face_extracted_frames_101"  # 面部数据
+# pose_data_dir = r"D:\dataset\frame_picture\pose_extracted_frames_101"  # 肢体数据
+# csv_dir = r"D:\dataset\eeg_csv"  # 标签CSV文件目录
+
 # 添加置信度CSV文件目录参数
-CONF_CSV_PATH = r"/home/ccnu/Desktop/dataset/confidence.csv"  # 置信度数据
+CONF_CSV_PATH = r"/home/ccnu/Desktop/dataset/Dataset_align_face_pose_eeg_feature.csv"  # 置信度数据
 batch_size = 32  # 进一步减小以适应序列输入
 num_epochs = 100
 learning_rate = 0.0001
@@ -150,6 +158,118 @@ class QTALSTM(nn.Module):
 
 
 
+# --- MultiSegmentAttentionDataset 类 --- 
+class MultiSegmentAttentionDataset(Dataset):
+    def __init__(self, img_dir, csv_dir, seq_len=10, transform=None, segment_keys=None, is_pose=False):
+        self.img_dir = img_dir
+        self.seq_len = seq_len
+        self.transform = transform
+        self.label_map = {'低': 0, '稍低': 1, '中性': 2, '稍高': 3, '高': 4}
+        self.is_pose = is_pose
+
+        # 1. 扫描并加载 CSV 标签库
+        # key: (start_time_str, end_time_str), value: DataFrame
+        self.label_dfs = {}
+        csv_files = [f for f in os.listdir(csv_dir) if f.endswith('.csv')]
+        print(f"正在加载 {len(csv_files)} 个标签文件...")
+
+        for cf in csv_files:
+            # 假设 CSV 文件名格式: xxxx_xxxx_20231229153000_20231229154000.csv
+            parts = cf.replace('.csv', '').split('_')
+            # 根据你的文件名规则，倒数第二和倒数第一通常是时间
+            s_str, e_str = parts[-2], parts[-1]
+
+            df = pd.read_csv(os.path.join(csv_dir, cf))
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            self.label_dfs[(s_str, e_str)] = df
+
+        # 2. 解析图像文件并按时间段分组
+        segments = defaultdict(list)
+        if self.is_pose:
+            all_files = [f for f in os.listdir(img_dir) if f.endswith('.png')]
+        else:
+            all_files = [f for f in os.listdir(img_dir) if f.endswith('.jpg')]
+        print(f"正在解析 {len(all_files)} 个图像文件...")
+
+        for f in all_files:
+            parts = f.split('_')
+            if self.is_pose:
+                # 肢体格式：192.168.0.101_01_20231229153000_20231229154000_000000002190_rendered.png
+                if len(parts) >= 6:
+                    frame_idx = int(parts[-2])
+                    s_time_str = parts[-4]
+                    e_time_str = parts[-3]
+            else:
+                # 面部格式：frame_000000_192.168.0.101_01_20231229153000_20231229154000.jpg
+                if len(parts) >= 5:
+                    frame_idx = int(parts[1])
+                    s_time_str = parts[-2]
+                    e_time_str = parts[-1].replace('.jpg', '')
+
+            start_dt = datetime.strptime(s_time_str, "%Y%m%d%H%M%S")
+            total_milliseconds = frame_idx * 100  # 0.1秒 = 100毫秒
+            curr_dt = start_dt + timedelta(milliseconds=total_milliseconds)
+            segments[(s_time_str, e_time_str)].append({
+                'filename': f,
+                'time': curr_dt,
+                'idx': frame_idx
+            })
+
+        # 3. 如果指定了 segment_keys，则只保留这些段的数据
+        if segment_keys is not None:
+            filtered_segments = {k: v for k, v in segments.items() if k in segment_keys}
+        else:
+            filtered_segments = segments
+
+        # 4. 构建序列并从"对应"的 DataFrame 中取标签
+        self.valid_sequences = []
+        print("开始时序匹配标签...")
+
+        for seg_key, seg_files_list in filtered_segments.items():
+            # 检查是否有对应的 CSV 标签
+            if seg_key not in self.label_dfs:
+                print(f"⚠ 警告: 未找到段 {seg_key} 对应的 CSV 标签，跳过...")
+                continue
+
+            current_df = self.label_dfs[seg_key]
+            seg_files = sorted(seg_files_list, key=lambda x: x['idx'])
+
+            for i in range(0, len(seg_files) - seq_len + 1, 10):
+                seq_frames = seg_files[i: i + seq_len]
+                end_frame_time = seq_frames[-1]['time']
+
+                # 使用最后一帧的标签
+                end_frame_time = seq_frames[-1]['time']
+                time_diffs = (current_df['timestamp'] - end_frame_time).abs()
+                closest_idx = time_diffs.idxmin()
+                label_str = current_df.loc[closest_idx, 'attention']
+                
+                self.valid_sequences.append({
+                    'files': [x['filename'] for x in seq_frames],
+                    'label': self.label_map.get(label_str, 2)
+                })
+
+        print(f"成功构建序列总数: {len(self.valid_sequences)}")
+
+    def __len__(self):
+        return len(self.valid_sequences)
+
+    def __getitem__(self, idx):
+        data = self.valid_sequences[idx]
+        frames = []
+        for fname in data['files']:
+            img = Image.open(os.path.join(self.img_dir, fname)).convert('RGB')
+            if self.transform:
+                img = self.transform(img)
+            else:
+                # 如果没有transform，至少转换为tensor
+                from torchvision import transforms
+                img = transforms.ToTensor()(img)
+            frames.append(img)
+        # 返回帧序列和标签
+        return torch.stack(frames), torch.tensor(data['label'], dtype=torch.long)
+
+
 # --- 2. 数据增强与预处理 ---
 # ResNet 标准输入是 224x224
 # 使用原有参数：面部和肢体分别使用各自的标准化参数
@@ -279,14 +399,14 @@ class ApplyTransform(torch.utils.data.Dataset):
 
 # --- 4. 自定义数据集加载器 --- 
 class FusionDataset(torch.utils.data.Dataset):
-    def __init__(self, face_data_dir, pose_data_dir, conf_csv_path=None, sequence_length=5):
+    def __init__(self, face_data_dir, pose_data_dir, csv_dir, conf_csv_path=None, sequence_length=10):
         self.sequence_length = sequence_length
         self.samples = []
         self.targets = []
         
         # 加载面部和肢体数据
-        face_dataset = TimeIntervalDataset(face_data_dir)
-        pose_dataset = TimeIntervalDataset(pose_data_dir)
+        face_dataset = MultiSegmentAttentionDataset(face_data_dir, csv_dir, sequence_length, is_pose=False)
+        pose_dataset = MultiSegmentAttentionDataset(pose_data_dir, csv_dir, sequence_length, is_pose=True)
         
         # 加载置信度 CSV 文件（如果提供）
         self.conf_df = None
@@ -294,115 +414,94 @@ class FusionDataset(torch.utils.data.Dataset):
             print(f"正在加载置信度文件: {conf_csv_path}...")
             try:
                 # 直接加载单个置信度CSV文件
-                self.conf_df = pd.read_csv(conf_csv_path)
+                self.conf_df = pd.read_csv(conf_csv_path,usecols=["timestamp_pose", "confidence"])
                 self.conf_df['timestamp'] = pd.to_datetime(self.conf_df['timestamp_pose'])
                 print(f"成功加载置信度文件，共 {len(self.conf_df)} 条记录")
             except Exception as e:
                 print(f"警告: 加载置信度文件失败: {e}")
         
-        # 构建面部样本的映射：{时间区间: {帧号: (路径, 标签)}}
-        face_map = {}
-        for img_path, target in zip(face_dataset.samples, face_dataset.targets):
-            filename = os.path.basename(img_path)
-            if filename.endswith('.jpg'):
-                parts = filename.split('_')
-                if len(parts) >= 5:
-                    interval = f"{parts[-2]}_{parts[-1].split('.')[0]}"
-                    frame_num = 0
-                    if len(parts) >= 2 and parts[0] == 'frame':
-                        try:
-                            frame_num = int(parts[1])
-                        except:
-                            pass
-                    if interval not in face_map:
-                        face_map[interval] = {}
-                    face_map[interval][frame_num] = (img_path, target)
-        
-        # 构建肢体样本的映射：{时间区间: {帧号: 路径}}
-        pose_map = {}
-        for img_path in pose_dataset.samples:
-            filename = os.path.basename(img_path)
-            if filename.endswith('.png'):
-                parts = filename.split('_')
-                if len(parts) >= 6:
-                    interval = f"{parts[-4]}_{parts[-3]}"
-                    frame_num = 0
-                    try:
-                        frame_num = int(parts[-2])
-                    except:
-                        pass
-                    if interval not in pose_map:
-                        pose_map[interval] = {}
-                    pose_map[interval][frame_num] = img_path
-        
-        # 匹配面部和肢体样本并生成序列
+        # 按序匹配面部和肢体样本
         matched_count = 0
-        for interval in face_map:
-            if interval in pose_map:
-                # 获取该时间区间内所有匹配的帧号
-                common_frame_nums = sorted(list(set(face_map[interval].keys()) & set(pose_map[interval].keys())))
+        
+        # 遍历面部序列
+        for face_seq in face_dataset.valid_sequences:
+            # 获取面部序列的时间区间和帧号
+            first_face_img = face_seq['files'][0]
+            face_parts = first_face_img.split('_')
+            if len(face_parts) >= 5:
+                # 面部格式：frame_000000_192.168.0.101_01_20231229153000_20231229154000.jpg
+                face_interval = f"{face_parts[-2]}_{face_parts[-1].split('.')[0]}"
+                face_frame_num = int(face_parts[1])
                 
-                # 生成连续的帧序列，窗口大小为 sequence_length，步长为 sequence_length
-                for i in range(0, len(common_frame_nums) - sequence_length + 1, sequence_length):
-                    # 直接取连续的窗口，不需要额外检查
-                    frame_sequence = common_frame_nums[i:i+sequence_length]
-                    face_sequence = []
-                    pose_sequence = []
-                    conf_sequence = []
-                    target = None
-                    valid_sequence = True
-                    
-                    # 收集序列中的所有帧
-                    for frame_num in frame_sequence:
-                        face_path, target = face_map[interval][frame_num]
-                        pose_path = pose_map[interval][frame_num]
-                        face_sequence.append(face_path)
-                        pose_sequence.append(pose_path)
+                # 在肢体序列中查找匹配的序列
+                for pose_seq in pose_dataset.valid_sequences:
+                    first_pose_img = pose_seq['files'][0]
+                    pose_parts = first_pose_img.split('_')
+                    if len(pose_parts) >= 6:
+                        # 肢体格式：192.168.0.101_01_20231229153000_20231229154000_000000002190_rendered.png
+                        pose_interval = f"{pose_parts[-4]}_{pose_parts[-3]}"
+                        pose_frame_num = int(pose_parts[-2])
                         
-                        # 生成帧的时间戳以匹配置信度
-                        if self.conf_df is not None:
-                            # 从文件名中提取时间信息
-                            face_filename = os.path.basename(face_path)
-                            parts = face_filename.split('_')
-                            if len(parts) >= 6:
-                                # 假设时间格式为 20231229153000
-                                time_str = parts[-2]
-                                try:
-                                    # 解析时间
-                                    frame_time = datetime.strptime(time_str, "%Y%m%d%H%M%S")
-                                    # 添加帧偏移（假设每帧0.1秒）
-                                    frame_time += timedelta(seconds=frame_num * 0.1)
+                        # 检查时间区间和帧号是否匹配
+                        if face_interval == pose_interval and abs(face_frame_num - pose_frame_num) == 0:
+                            # 确保序列长度一致
+                            if len(face_seq['files']) == sequence_length and len(pose_seq['files']) == sequence_length:
+                                # 生成置信度序列
+                                conf_sequence = []
+                                
+                                # 从 face_interval 中提取开始时间
+                                parts = first_face_img.split('_')
+                                if len(parts) >= 6:
+                                    # face_interval 的开始时间是 parts[-2]
+                                    start_time_str = face_parts[-2]
                                     
-                                    # 在置信度 DataFrame 中找最接近的时间点
-                                    time_diffs = (self.conf_df['timestamp'] - frame_time).abs()
-                                    closest_idx = time_diffs.idxmin()
-                                    
-                                    if time_diffs.min() <= timedelta(seconds=1):
-                                        # 尝试获取 confidence 值，如果不存在则设为默认值 0.5
-                                        confidence = self.conf_df.loc[closest_idx].get('confidence', 0.5)
-                                        conf_sequence.append(confidence)
-                                    else:
-                                        # 如果找不到对应的时间点，使用默认值 0.5
-                                        conf_sequence.append(0.5)
-                                except Exception as e:
-                                    # 如果解析失败，使用默认值 0.5
-                                    conf_sequence.append(0.5)
-                            else:
-                                # 如果文件名格式不正确，使用默认值 0.5
-                                conf_sequence.append(0.5)
-                        else:
-                            # 如果没有提供置信度文件，使用默认值 0.5
-                            conf_sequence.append(0.5)
-                    
-                    if target is not None and valid_sequence:
-                        self.samples.append((face_sequence, pose_sequence, conf_sequence))
-                        self.targets.append(target)
-                        matched_count += 1
+                                    try:
+                                        # 解析开始时间
+                                        start_time = datetime.strptime(start_time_str, "%Y%m%d%H%M%S")
+                                        
+                                        # 为序列中的每个帧生成置信度
+                                        for i in range(sequence_length):
+                                            # 计算当前帧的帧号
+                                            frame_num = face_frame_num + i
+                                            # 添加帧偏移（假设每帧0.1秒）
+                                            frame_time = start_time + timedelta(seconds=frame_num * 0.1)
+                                            
+                                            if self.conf_df is not None:
+                                                # 首先尝试通过时间直接匹配找到 confidence
+                                                try:
+                                                    # 找到与 frame_time 完全匹配的时间点
+                                                    matching_rows = self.conf_df[self.conf_df['timestamp'] == frame_time]
+                                                    if not matching_rows.empty:
+                                                        # 如果找到完全匹配的时间点，使用对应的置信度
+                                                        confidence = matching_rows.iloc[0]['confidence']
+                                                    else:
+                                                        # 如果找不到完全匹配的时间点，使用最接近的匹配
+                                                        time_diffs = (self.conf_df['timestamp'] - frame_time).abs()
+                                                        closest_idx = time_diffs.idxmin()
+                                                        confidence = self.conf_df.loc[closest_idx, 'confidence']
+                                                except (KeyError, IndexError):
+                                                    # 如果取不到使用默认值
+                                                    confidence = 0.5
+                                                conf_sequence.append(confidence)
+                                            else:
+                                                # 如果没有提供置信度文件，使用默认值 0.5
+                                                conf_sequence.append(0.5)
+                                    except Exception as e:
+                                        # 如果解析失败，使用默认值 0.5
+                                        conf_sequence = [0.5] * sequence_length
+                                else:
+                                    # 如果文件名格式不正确，使用默认值 0.5
+                                    conf_sequence = [0.5] * sequence_length
+                                
+                                self.samples.append((face_seq['files'], pose_seq['files'], conf_sequence))
+                                self.targets.append(face_seq['label'])
+                                matched_count += 1
+                                break
         
         print(f"成功匹配 {matched_count} 对序列样本")
     
     def __getitem__(self, index):
-        face_img_paths, pose_img_paths, conf_sequence = self.samples[index]
+        face_img_names, pose_img_names, conf_sequence = self.samples[index]
         target = self.targets[index]
         
         from PIL import Image
@@ -410,9 +509,9 @@ class FusionDataset(torch.utils.data.Dataset):
         pose_imgs = []
         
         # 加载序列中的所有图像
-        for face_path, pose_path in zip(face_img_paths, pose_img_paths):
-            face_img = Image.open(face_path).convert('RGB')
-            pose_img = Image.open(pose_path).convert('RGB')
+        for face_name, pose_name in zip(face_img_names, pose_img_names):
+            face_img = Image.open(os.path.join(face_data_dir, face_name)).convert('RGB')
+            pose_img = Image.open(os.path.join(pose_data_dir, pose_name)).convert('RGB')
             face_imgs.append(face_img)
             pose_imgs.append(pose_img)
         
@@ -459,7 +558,7 @@ class FusionApplyTransform(torch.utils.data.Dataset):
 print("正在加载面部和肢体数据集...")
 
 # 创建完整的融合数据集（已匹配的样本）
-full_dataset = FusionDataset(face_data_dir, pose_data_dir, CONF_CSV_PATH, sequence_length=sequence_length)
+full_dataset = FusionDataset(face_data_dir, pose_data_dir, csv_dir, CONF_CSV_PATH, sequence_length=sequence_length)
 
 # 获取索引进行划分 (80% 训练, 20% 验证)
 train_idx, val_idx = train_test_split(

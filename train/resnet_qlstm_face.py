@@ -165,7 +165,7 @@ class MultiSegmentAttentionDataset(Dataset):
             print(f"正在加载置信度文件: {conf_csv_path}...")
             try:
                 # 直接加载单个置信度CSV文件
-                self.conf_df = pd.read_csv(conf_csv_path)
+                self.conf_df = pd.read_csv(conf_csv_path,usecols=["timestamp_pose", "confidence"])
                 self.conf_df['timestamp'] = pd.to_datetime(self.conf_df['timestamp_pose'])
                 print(f"成功加载置信度文件，共 {len(self.conf_df)} 条记录")
             except Exception as e:
@@ -331,7 +331,7 @@ if __name__ == '__main__':
     CSV_DIR = r'/home/ccnu/Desktop/dataset/eeg_csv'  # <-- 修改这里
     # 添加置信度CSV文件目录参数
     CONF_CSV_PATH = r'/home/ccnu/Desktop/dataset/confidence.csv'  # <-- 修改这里
-    IMG_DIR = r'D:\dataset\frame_picture\classfied_by_time_face_101\20231229153000_20231229154000'  # <-- 修改这里
+    IMG_DIR = r'D:\dataset\frame_picture\face_extracted_frames_101'  # <-- 修改这里
     CSV_DIR = r'D:\dataset\eeg_csv'  # <-- 修改这里
     # 添加置信度CSV文件目录参数
     CONF_CSV_PATH = r"D:\dataset\Dataset_align_face_pose_eeg_feature.csv" # <-- 修改这里
