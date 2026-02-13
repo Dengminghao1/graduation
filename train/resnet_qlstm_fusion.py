@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # --- 1. 配置参数 ---
 face_data_dir = r"/home/ccnu/Desktop/dataset/extracted_frames_pic/face_extracted_frames_all"  # 面部数据
-pose_data_dir = r"/home/ccnu/Desktop/dataset/extracted_frames_pic/pose_extracted_frames_all"  # 肢体数据
+pose_data_dir = r"/home/ccnu/Desktop/dataset/extracted_frames_pic/pose_224_all"  # 肢体数据
 csv_dir = r"/home/ccnu/Desktop/dataset/eeg_csv"  # 标签CSV文件目录
 
 # face_data_dir = r"D:\dataset\frame_picture\face_extracted_frames_101"  # 面部数据
@@ -27,7 +27,9 @@ csv_dir = r"/home/ccnu/Desktop/dataset/eeg_csv"  # 标签CSV文件目录
 
 # 添加置信度CSV文件目录参数
 CONF_CSV_PATH = r"/home/ccnu/Desktop/dataset/Dataset_align_face_pose_eeg_feature.csv"  # 置信度数据
-batch_size = 32  # 进一步减小以适应序列输入
+num_workers=0
+early_stop_patience = 10
+batch_size = 20  # 进一步减小以适应序列输入
 num_epochs = 100
 learning_rate = 0.0001
 num_classes = 5  # 低, 稍低, 中性, 稍高, 高
@@ -554,37 +556,135 @@ class FusionApplyTransform(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.indices)
 
+# --- 预处理数据读取数据集 --- 
+class PreprocessedDataset(torch.utils.data.Dataset):
+    def __init__(self, preprocessed_data_dir):
+        self.preprocessed_data_dir = preprocessed_data_dir
+        self.metadata = torch.load(os.path.join(preprocessed_data_dir, 'metadata.pt'))
+        self.total_sequences = self.metadata['total_sequences']
+        self.batch_size = self.metadata['batch_size']
+        self.total_batches = self.metadata['total_batches']
+        
+        # 预加载批次索引，避免重复加载批次文件
+        self.batch_indices = []
+        self.batch_sizes = []
+        for batch_idx in range(self.total_batches):
+            # 只加载一次批次大小信息，避免重复加载整个批次
+            face_batch_path = os.path.join(preprocessed_data_dir, 'face', f'face_batch_{batch_idx}.pt')
+            if os.path.exists(face_batch_path):
+                # 使用mmap_mode='r'减少内存使用
+                face_batch = torch.load(face_batch_path, map_location='cpu', mmap_mode='r')
+                batch_size = face_batch.size(0)
+                self.batch_sizes.append(batch_size)
+                self.batch_indices.extend([(batch_idx, i) for i in range(batch_size)])
+                # 释放内存
+                del face_batch
+        
+        print(f"加载预处理数据集: {self.total_sequences} 个样本, {self.total_batches} 个批次")
+    
+    def __getitem__(self, index):
+        import time
+        start_time = time.time()
+        
+        # 获取批次索引和样本在批次中的索引
+        batch_idx, sample_idx = self.batch_indices[index]
+        
+        # 加载批次数据，使用mmap_mode减少内存使用
+        face_data = torch.load(
+            os.path.join(self.preprocessed_data_dir, 'face', f'face_batch_{batch_idx}.pt'),
+            map_location='cpu',
+            mmap_mode='r'
+        )
+        pose_data = torch.load(
+            os.path.join(self.preprocessed_data_dir, 'pose', f'pose_batch_{batch_idx}.pt'),
+            map_location='cpu',
+            mmap_mode='r'
+        )
+        labels = torch.load(
+            os.path.join(self.preprocessed_data_dir, 'labels', f'labels_batch_{batch_idx}.pt'),
+            map_location='cpu',
+            mmap_mode='r'
+        )
+        
+        # 生成默认的置信度序列（QLSTM需要）
+        conf_sequence = [0.5] * face_data.size(1)
+        
+        # 返回单个样本
+        sample = (face_data[sample_idx], pose_data[sample_idx], conf_sequence, labels[sample_idx])
+        
+        # 释放内存
+        del face_data, pose_data, labels
+        
+        load_time = time.time() - start_time
+        if load_time > 0.1:  # 打印加载时间较长的样本
+            print(f"样本 {index} 加载时间: {load_time:.4f}s")
+        
+        return sample
+    
+    def __len__(self):
+        return self.total_sequences
+    
+    def get_all_labels(self):
+        """获取所有样本的标签，用于分层采样"""
+        labels = []
+        for batch_idx in range(self.total_batches):
+            # 加载批次标签
+            batch_labels = torch.load(
+                os.path.join(self.preprocessed_data_dir, 'labels', f'labels_batch_{batch_idx}.pt'),
+                map_location='cpu'
+            )
+            labels.extend(batch_labels.tolist())
+        return labels
+
 # --- 5. 加载数据集并划分训练/验证集 ---  
 print("正在加载面部和肢体数据集...")
 
-# 创建完整的融合数据集（已匹配的样本）
-full_dataset = FusionDataset(face_data_dir, pose_data_dir, csv_dir, CONF_CSV_PATH, sequence_length=sequence_length)
+# 配置预处理数据目录
+preprocessed_data_dir = r"/home/ccnu/Desktop/dataset/preprocessed_data"  # 预处理后数据目录
+# preprocessed_data_dir = r"D:\dataset\preprocessed_data"  # 本地测试路径
+
+# 使用预处理数据集
+full_dataset = PreprocessedDataset(preprocessed_data_dir)
+
+# 获取所有标签用于分层采样
+all_labels = full_dataset.get_all_labels()
+print(f"标签分布: {dict(pd.Series(all_labels).value_counts())}")
 
 # 获取索引进行划分 (80% 训练, 20% 验证)
 train_idx, val_idx = train_test_split(
     list(range(len(full_dataset))),
     test_size=0.2,
-    stratify=full_dataset.targets,  # 保持类别比例一致
+    stratify=all_labels,  # 按类别分层采样
     random_state=42
 )
 
-# 创建训练和验证数据集
-train_dataset = FusionApplyTransform(
-    full_dataset,
-    train_idx,
-    face_transform=data_transforms['face_train'],
-    pose_transform=data_transforms['pose_train']
-)
-val_dataset = FusionApplyTransform(
-    full_dataset,
-    val_idx,
-    face_transform=data_transforms['face_val'],
-    pose_transform=data_transforms['pose_val']
-)
+# 创建训练和验证数据集（直接使用Subset，因为数据已经预处理）
+train_dataset = torch.utils.data.Subset(full_dataset, train_idx)
+val_dataset = torch.utils.data.Subset(full_dataset, val_idx)
+
+# 验证训练集和验证集的类别分布
+train_labels = [all_labels[i] for i in train_idx]
+val_labels = [all_labels[i] for i in val_idx]
+
+print(f"训练集大小: {len(train_dataset)}, 验证集大小: {len(val_dataset)}")
+print(f"训练集标签分布: {dict(pd.Series(train_labels).value_counts())}")
+print(f"验证集标签分布: {dict(pd.Series(val_labels).value_counts())}")
+
+# 计算类别比例，确保分布一致
+train_label_ratio = {k: v/len(train_labels) for k, v in pd.Series(train_labels).value_counts().items()}
+val_label_ratio = {k: v/len(val_labels) for k, v in pd.Series(val_labels).value_counts().items()}
+
+print("训练集类别比例:")
+for k, v in sorted(train_label_ratio.items()):
+    print(f"  类别 {k}: {v:.4f}")
+
+print("验证集类别比例:")
+for k, v in sorted(val_label_ratio.items()):
+    print(f"  类别 {k}: {v:.4f}")
 
 # 创建数据加载器
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
 # --- 5. 构建融合模型 --- 
 class FusionResNetLSTM(nn.Module):
@@ -701,17 +801,29 @@ scaler = GradScaler()  # 混合精度加速器
 print(f"开始训练... 设备: {device}")
 
 patience_counter = 0
-early_stop_patience = 10
+
 
 for epoch in range(num_epochs):
+    import time
+    epoch_start_time = time.time()
+    
     # --- 1. 训练阶段 ---
     model.train()
     running_loss = 0.0
     corrects = 0
     total_train = 0
+    data_loading_time = 0
+    training_time = 0
 
     for face_inputs, pose_inputs, conf, labels in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
+        # 记录数据加载时间
+        batch_start_time = time.time()
+        
         face_inputs, pose_inputs, conf, labels = face_inputs.to(device), pose_inputs.to(device), conf.to(device), labels.to(device)
+        data_loading_time += time.time() - batch_start_time
+        
+        # 记录训练时间
+        train_start_time = time.time()
         optimizer.zero_grad()
 
         # 混合精度前向传播
@@ -723,6 +835,7 @@ for epoch in range(num_epochs):
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
+        training_time += time.time() - train_start_time
 
         # 统计
         running_loss += loss.item() * face_inputs.size(0)
@@ -738,14 +851,22 @@ for epoch in range(num_epochs):
     val_loss = 0.0
     val_corrects = 0
     total_val = 0
+    val_data_loading_time = 0
+    val_inference_time = 0
 
     with torch.no_grad():
         for face_inputs, pose_inputs, conf, labels in tqdm(val_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Val]"):
+            # 记录验证数据加载时间
+            val_batch_start_time = time.time()
             face_inputs, pose_inputs, conf, labels = face_inputs.to(device), pose_inputs.to(device), conf.to(device), labels.to(device)
-
+            val_data_loading_time += time.time() - val_batch_start_time
+            
+            # 记录验证推理时间
+            val_inference_start = time.time()
             with autocast(device_type='cuda'):
                 outputs = model(face_inputs, pose_inputs, conf)
                 v_loss = criterion(outputs, labels)
+            val_inference_time += time.time() - val_inference_start
 
             val_loss += v_loss.item() * face_inputs.size(0)
             _, preds = torch.max(outputs, 1)
@@ -762,8 +883,15 @@ for epoch in range(num_epochs):
     history['val_loss'].append(epoch_val_loss)
     history['val_acc'].append(epoch_val_acc.item())
 
+    epoch_end_time = time.time()
+    epoch_duration = epoch_end_time - epoch_start_time
+    
     print(f'Epoch {epoch + 1}: Train Loss: {epoch_train_loss:.4f} Acc: {epoch_train_acc:.4f} | '  
           f'Val Loss: {epoch_val_loss:.4f} Acc: {epoch_val_acc:.4f}')
+    print(f'性能统计: 总时间: {epoch_duration:.2f}s | 数据加载: {data_loading_time:.2f}s | '  
+          f'训练: {training_time:.2f}s | 验证数据加载: {val_data_loading_time:.2f}s | '  
+          f'验证推理: {val_inference_time:.2f}s')
+    print(f'数据加载占比: {(data_loading_time/epoch_duration*100):.1f}% | 训练占比: {(training_time/epoch_duration*100):.1f}%')
 
     if epoch_val_acc > best_val_acc:
         best_val_acc = epoch_val_acc
