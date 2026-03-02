@@ -21,7 +21,7 @@ df.columns = df.columns.str.strip()  # 去除列名首尾空格
 # pose_Tx pose_Rz
 # x_0 y_67 X_0 Z_67
 # p_scale p_rx p_ty p_0 p_33
-start_column = 'x0'
+start_column = 'gaze_0_x'
 end_column = 'y18'
 
 if start_column in df.columns and end_column in df.columns:

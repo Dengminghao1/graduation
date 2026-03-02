@@ -52,6 +52,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="D:\dataset\Dataset_align_face_pose_eeg_feature.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="D:\dataset\Dataset_align_face_pose_eeg_feature_standardized.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="D:\dataset\eeg_csv\2021214387_周婉婷_20231229163010_20231229164010.csv">
           <value>
             <Attribute>
@@ -210,6 +224,13 @@
           <value>
             <Attribute>
               <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\Dataset_align_face_pose_eeg_feature_standardized.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>
