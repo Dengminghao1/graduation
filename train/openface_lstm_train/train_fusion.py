@@ -12,63 +12,33 @@ import seaborn as sns
 import os
 from tqdm import tqdm
 
-# Check for GPU availability
+# 检查是否有GPU可用
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'Using device: {device}')
 
 # 读取标准化后的数据
-data_path = 'd:\Pycharm_Projects\demo1_trae\Dataset_align_face_pose_eeg_feature_standardized.csv'
+data_path = 'd:\\Pycharm_Projects\\demo1_trae\\Dataset_align_face_pose_eeg_feature_standardized.csv'
 
-# 读取标签（使用分块读取以节省内存）
-labels = []
-for chunk in pd.read_csv(data_path, chunksize=10000, usecols=['attention']):
-    labels.extend(chunk['attention'].tolist())
+# 首先读取列名，确定特征范围
+with open(data_path, 'r') as f:
+    header = f.readline().strip().split(',')
 
-if not labels:
-    # 如果没有attention列，使用一个示例标签（实际应用中需要替换）
-    # 先计算文件总行数
-    total_rows = 0
-    for chunk in pd.read_csv(data_path, chunksize=10000):
-        total_rows += len(chunk)
-    labels = np.random.randint(0, 2, total_rows)
+# 确定面部特征的列索引
+face_start = header.index('gaze_0_x')
+face_end = header.index('p_33') + 1
+face_cols = header[face_start:face_end]
 
-# 数据预处理
-label_encoder = LabelEncoder()
-labels_encoded = label_encoder.fit_transform(labels)
-num_classes = len(np.unique(labels_encoded))
-
-# 划分训练集和测试集
-train_indices, test_indices = train_test_split(
-    np.arange(len(labels_encoded)), test_size=0.2, random_state=42
-)
-
-# 提取面部特征和肢体特征列名
-face_cols = []
+# 提取肢体特征列名（从x0到y18）
 pose_cols = []
-# 读取第一行来获取列名
-first_chunk = next(pd.read_csv(data_path, chunksize=1))
-
-# 提取面部特征列（从gaze_0_x到p_33）
-face_started = False
-for col in first_chunk.columns:
-    if col == 'gaze_0_x':
-        face_started = True
-    if face_started:
-        face_cols.append(col)
-        if col == 'p_33':
-            break
-
-# 提取肢体特征列（从x0到y18）
-columns = first_chunk.columns.tolist()
-if 'x0' in columns and 'y18' in columns:
-    start_idx = columns.index('x0')
-    end_idx = columns.index('y18')
-    pose_cols = columns[start_idx:end_idx+1]
+if 'x0' in header and 'y18' in header:
+    start_idx = header.index('x0')
+    end_idx = header.index('y18')
+    pose_cols = header[start_idx:end_idx+1]
     print(f"成功提取pose特征列: {len(pose_cols)}列")
     print(f"特征范围: {pose_cols[0]} 到 {pose_cols[-1]}")
 else:
     # 如果找不到x0或y18，使用备用方法
-    for col in columns:
+    for col in header:
         if col.startswith('x') or col.startswith('y'):
             try:
                 if col == 'x0' or (pose_cols and col.startswith(pose_cols[-1][0]) and int(col[1:]) == int(pose_cols[-1][1:]) + 1):
@@ -81,6 +51,28 @@ else:
 
 # 合并特征列
 fusion_cols = face_cols + pose_cols
+print(f"成功融合特征列: {len(fusion_cols)}列")
+
+# 逐块读取数据，计算标签
+print('Reading labels...')
+labels = []
+chunk_size = 10000
+for chunk in pd.read_csv(data_path, chunksize=chunk_size, usecols=['attention']):
+    if 'attention' in chunk.columns:
+        labels.extend(chunk['attention'].tolist())
+    else:
+        # 如果没有attention列，使用示例标签
+        labels.extend(np.random.randint(0, 2, len(chunk)).tolist())
+
+# 数据预处理
+label_encoder = LabelEncoder()
+labels_encoded = label_encoder.fit_transform(labels)
+num_classes = len(np.unique(labels_encoded))
+
+# 划分训练集和测试集的索引
+print('Splitting data...')
+indices = np.arange(len(labels))
+train_indices, test_indices = train_test_split(indices, test_size=0.2, random_state=42)
 
 # 构建全连接模型
 class Classifier(nn.Module):
@@ -104,23 +96,20 @@ class Classifier(nn.Module):
         return self.model(x)
 
 # 初始化模型、损失函数和优化器
-# 先获取输入特征数量
-first_chunk = next(pd.read_csv(data_path, chunksize=1, usecols=fusion_cols))
-input_size = first_chunk.shape[1]
+input_size = len(fusion_cols)
 model = Classifier(input_size, num_classes).to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # 训练参数
 epochs = 50
-batch_size = 32
+batch_size = 1024
 validation_split = 0.1
 
 # 划分验证集
-val_size = int(len(train_indices) * validation_split)
-train_indices, val_indices = train_test_split(
-    train_indices, test_size=val_size, random_state=42
-)
+train_size = len(train_indices)
+val_size = int(train_size * validation_split)
+train_indices, val_indices = train_test_split(train_indices, test_size=val_size, random_state=42)
 
 # 训练历史
 train_loss_history = []
@@ -129,36 +118,50 @@ val_loss_history = []
 val_acc_history = []
 
 # 训练模型
+print('Training model...')
 for epoch in range(epochs):
     model.train()
     running_loss = 0.0
     correct = 0
     total = 0
     
-    # 批处理
+    # 打乱训练索引
+    np.random.shuffle(train_indices)
+    
+    # 批处理训练数据
     total_batches = len(train_indices) // batch_size + (1 if len(train_indices) % batch_size != 0 else 0)
     with tqdm(total=total_batches, desc=f'Epoch {epoch+1}/{epochs}', unit='batch') as pbar:
         for i in range(0, len(train_indices), batch_size):
-            batch_indices = train_indices[i:i+batch_size]
+            batch_indices = train_indices[i:min(i + batch_size, len(train_indices))]
             
-            # 从文件中加载批次数据
+            # 读取批次数据
+            # 由于内存限制，我们使用chunksize来读取数据
             batch_data = []
-            batch_targets = []
-            
             for chunk in pd.read_csv(data_path, chunksize=10000, usecols=fusion_cols):
+                # 计算当前chunk的索引范围
                 start_idx = chunk.index[0] if hasattr(chunk, 'index') else 0
                 end_idx = start_idx + len(chunk)
+                
+                # 检查是否有批次索引在当前chunk中
                 chunk_indices = [idx for idx in batch_indices if start_idx <= idx < end_idx]
                 if chunk_indices:
+                    # 计算在chunk中的相对索引
                     relative_indices = [idx - start_idx for idx in chunk_indices]
                     batch_data.extend(chunk.iloc[relative_indices].values.tolist())
-                    batch_targets.extend([labels_encoded[idx] for idx in chunk_indices])
+                
+                # 如果已经收集了所有批次数据，停止读取
                 if len(batch_data) >= len(batch_indices):
                     break
             
-            # 转换为张量
+            batch_data = np.array(batch_data)
+            batch_labels = labels_encoded[batch_indices]
+            
+            # 处理NaN值，替换为0
+            batch_data = np.nan_to_num(batch_data, nan=0.0)
+            
+            # 转换为PyTorch张量
             inputs = torch.tensor(batch_data, dtype=torch.float32).to(device)
-            targets = torch.tensor(batch_targets, dtype=torch.long).to(device)
+            targets = torch.tensor(batch_labels, dtype=torch.long).to(device)
             
             # 前向传播
             outputs = model(inputs)
@@ -195,12 +198,10 @@ for epoch in range(epochs):
     
     with torch.no_grad():
         for i in range(0, len(val_indices), batch_size):
-            batch_indices = val_indices[i:i+batch_size]
+            batch_indices = val_indices[i:min(i + batch_size, len(val_indices))]
             
-            # 从文件中加载批次数据
+            # 读取批次数据
             batch_data = []
-            batch_targets = []
-            
             for chunk in pd.read_csv(data_path, chunksize=10000, usecols=fusion_cols):
                 start_idx = chunk.index[0] if hasattr(chunk, 'index') else 0
                 end_idx = start_idx + len(chunk)
@@ -208,13 +209,18 @@ for epoch in range(epochs):
                 if chunk_indices:
                     relative_indices = [idx - start_idx for idx in chunk_indices]
                     batch_data.extend(chunk.iloc[relative_indices].values.tolist())
-                    batch_targets.extend([labels_encoded[idx] for idx in chunk_indices])
                 if len(batch_data) >= len(batch_indices):
                     break
             
-            # 转换为张量
+            batch_data = np.array(batch_data)
+            batch_labels = labels_encoded[batch_indices]
+            
+            # 处理NaN值，替换为0
+            batch_data = np.nan_to_num(batch_data, nan=0.0)
+            
+            # 转换为PyTorch张量
             inputs = torch.tensor(batch_data, dtype=torch.float32).to(device)
-            targets = torch.tensor(batch_targets, dtype=torch.long).to(device)
+            targets = torch.tensor(batch_labels, dtype=torch.long).to(device)
             
             outputs = model(inputs)
             loss = criterion(outputs, targets)
@@ -232,21 +238,17 @@ for epoch in range(epochs):
     print(f'Epoch {epoch+1}/{epochs}, Loss: {train_loss:.4f}, Acc: {train_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}')
 
 # 评估模型
+print('Evaluating model...')
 model.eval()
-test_loss = 0.0
-test_correct = 0
-test_total = 0
 y_pred = []
 y_true = []
 
 with torch.no_grad():
     for i in range(0, len(test_indices), batch_size):
-        batch_indices = test_indices[i:i+batch_size]
+        batch_indices = test_indices[i:min(i + batch_size, len(test_indices))]
         
-        # 从文件中加载批次数据
+        # 读取批次数据
         batch_data = []
-        batch_targets = []
-        
         for chunk in pd.read_csv(data_path, chunksize=10000, usecols=fusion_cols):
             start_idx = chunk.index[0] if hasattr(chunk, 'index') else 0
             end_idx = start_idx + len(chunk)
@@ -254,34 +256,32 @@ with torch.no_grad():
             if chunk_indices:
                 relative_indices = [idx - start_idx for idx in chunk_indices]
                 batch_data.extend(chunk.iloc[relative_indices].values.tolist())
-                batch_targets.extend([labels_encoded[idx] for idx in chunk_indices])
             if len(batch_data) >= len(batch_indices):
                 break
         
-        # 转换为张量
+        batch_data = np.array(batch_data)
+        batch_labels = labels_encoded[batch_indices]
+        
+        # 处理NaN值，替换为0
+        batch_data = np.nan_to_num(batch_data, nan=0.0)
+        
+        # 转换为PyTorch张量
         inputs = torch.tensor(batch_data, dtype=torch.float32).to(device)
-        targets = torch.tensor(batch_targets, dtype=torch.long).to(device)
+        targets = torch.tensor(batch_labels, dtype=torch.long).to(device)
         
         outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        
-        test_loss += loss.item()
         _, predicted = torch.max(outputs.data, 1)
-        test_total += targets.size(0)
-        test_correct += (predicted == targets).sum().item()
         
         y_pred.extend(predicted.cpu().numpy())
         y_true.extend(targets.cpu().numpy())
 
-accuracy = test_correct / test_total
-print(f'Test Loss: {test_loss / (len(test_indices) // batch_size + 1):.4f}')
-print(f'Test Accuracy: {accuracy:.4f}')
-
 # 计算评估指标
+accuracy = accuracy_score(y_true, y_pred)
 precision = precision_score(y_true, y_pred, average='weighted')
 recall = recall_score(y_true, y_pred, average='weighted')
 f1 = f1_score(y_true, y_pred, average='weighted')
 
+print(f'Test Accuracy: {accuracy:.4f}')
 print(f'Precision: {precision:.4f}')
 print(f'Recall: {recall:.4f}')
 print(f'F1 Score: {f1:.4f}')
@@ -321,28 +321,31 @@ plt.show()
 
 # T-SNE可视化
 print('Performing t-SNE visualization...')
-# 取前1000个样本进行可视化
+# 取前1000个测试样本进行可视化
 n_samples = min(1000, len(test_indices))
-test_indices_subset = test_indices[:n_samples]
+sample_indices = test_indices[:n_samples]
 
-# 加载用于t-SNE的样本
-X_tsne = []
-y_tsne = []
-
+# 读取样本数据
+sample_data = []
 for chunk in pd.read_csv(data_path, chunksize=10000, usecols=fusion_cols):
     start_idx = chunk.index[0] if hasattr(chunk, 'index') else 0
     end_idx = start_idx + len(chunk)
-    chunk_indices = [idx for idx in test_indices_subset if start_idx <= idx < end_idx]
+    chunk_indices = [idx for idx in sample_indices if start_idx <= idx < end_idx]
     if chunk_indices:
         relative_indices = [idx - start_idx for idx in chunk_indices]
-        X_tsne.extend(chunk.iloc[relative_indices].values.tolist())
-        y_tsne.extend([labels_encoded[idx] for idx in chunk_indices])
-    if len(X_tsne) >= n_samples:
+        sample_data.extend(chunk.iloc[relative_indices].values.tolist())
+    if len(sample_data) >= n_samples:
         break
+
+sample_data = np.array(sample_data)
+y_tsne = labels_encoded[sample_indices]
+
+# 处理NaN值，替换为0
+sample_data = np.nan_to_num(sample_data, nan=0.0)
 
 # 应用t-SNE
 tsne = TSNE(n_components=2, random_state=42)
-X_tsne_embedded = tsne.fit_transform(X_tsne)
+X_tsne_embedded = tsne.fit_transform(sample_data)
 
 # 绘制t-SNE结果
 plt.figure(figsize=(10, 8))

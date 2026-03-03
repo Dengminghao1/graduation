@@ -131,6 +131,9 @@ for epoch in range(epochs):
             batch_data = np.array(batch_data)
             batch_labels = labels_encoded[batch_indices]
             
+            # 处理NaN值，替换为0
+            batch_data = np.nan_to_num(batch_data, nan=0.0)
+            
             # 转换为PyTorch张量
             inputs = torch.tensor(batch_data, dtype=torch.float32).to(device)
             targets = torch.tensor(batch_labels, dtype=torch.long).to(device)
@@ -186,6 +189,9 @@ for epoch in range(epochs):
             
             batch_data = np.array(batch_data)
             batch_labels = labels_encoded[batch_indices]
+            
+            # 处理NaN值，替换为0
+            batch_data = np.nan_to_num(batch_data, nan=0.0)
             
             # 转换为PyTorch张量
             inputs = torch.tensor(batch_data, dtype=torch.float32).to(device)
@@ -305,6 +311,9 @@ for chunk in pd.read_csv(data_path, chunksize=10000, usecols=face_cols):
 
 sample_data = np.array(sample_data)
 y_tsne = labels_encoded[sample_indices]
+
+# 处理NaN值，替换为0
+sample_data = np.nan_to_num(sample_data, nan=0.0)
 
 # 应用t-SNE
 tsne = TSNE(n_components=2, random_state=42)
